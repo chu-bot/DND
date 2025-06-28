@@ -1,254 +1,145 @@
-import openai
-import json
 import os
+import json
+import uuid
 from typing import List, Dict, Any, Optional, Tuple
 from difflib import get_close_matches
-import re
-import uuid
+from openai import OpenAI
 from game_types import Action
+from ai_prompts import get_strategy_decision_message, get_dynamic_action_message, get_suggestion_message
+from ai_tools import AVAILABLE_TOOLS, TOOL_FUNCTIONS
 
 
 class AIActionHandler:
     def __init__(self):
         self.api_key = os.getenv("OPENAI_API_KEY")
+        self.client = None
         if self.api_key:
-            openai.api_key = self.api_key
+            self.client = OpenAI(api_key=self.api_key)
         self.available_actions = []
-        self.action_suggestions = {}
         
     def set_available_actions(self, actions: List[str]):
         """Set the list of available actions for autocorrect and suggestions"""
         self.available_actions = actions
-        
-    def autocorrect_command(self, user_input: str) -> Tuple[str, bool]:
+
+    def decide_action_strategy(self, user_input: str, game_state: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Autocorrect common spelling mistakes in commands.
-        Returns (corrected_command, was_corrected)
+        Analyze user input and decide whether to use existing actions or create a dynamic action.
+        
+        Returns a dictionary with:
+        - strategy: "existing" or "dynamic"
+        - confidence: float (0.0 to 1.0) indicating confidence in the decision
+        - suggested_action: the closest existing action (if strategy is "existing")
+        - reasoning: explanation of the decision
+        - should_create_dynamic: boolean indicating if we should create a dynamic action anyway
         """
-        if not user_input:
-            return user_input, False
-            
-        # Split into command and arguments
-        parts = user_input.split()
-        if not parts:
-            return user_input, False
-            
-        command = parts[0].lower()
-        args = parts[1:] if len(parts) > 1 else []
+        if not self.client:
+            return {
+                "strategy": "dynamic",
+                "confidence": 0.5,
+                "suggested_action": None,
+                "reasoning": "No API key available, defaulting to dynamic action creation",
+                "should_create_dynamic": True
+            }
         
-        # Common misspellings and corrections
-        corrections = {
-            # Commands
-            "staus": "status",
-            "inventry": "inventory", 
-            "inventori": "inventory",
-            "skilbook": "skillbook",
-            "skillbok": "skillbook",
-            "quests": "available_quests",
-            "quest": "available_quests",
-            "shp": "shop",
-            "by": "buy",
-            "mov": "move",
-            "tavel": "travel",
-            "travl": "travel",
-            "us": "use",
-            "strt": "start",
-            "hel": "help",
-            "quit": "quit",
-            "exi": "quit",
-            "exit": "quit",
+        try:
+            # Prepare context for AI analysis
+            context = {
+                "user_input": user_input,
+                "available_actions": self.available_actions,
+                "current_location": game_state.get("player_location", "unknown"),
+                "player_health": game_state.get("player_health", 100),
+                "player_mana": game_state.get("player_mana", 50),
+                "player_gold": game_state.get("player_gold", 100),
+                "player_level": game_state.get("player_level", 1),
+                "active_quests": game_state.get("active_quests", []),
+                "inventory": game_state.get("inventory", [])
+            }
             
-            # Common item names
-            "potion": "health_potion",
-            "health": "health_potion",
-            "mana": "mana_potion",
-            "sword": "iron_sword",
-            "armor": "leather_armor",
-            "scroll": "fireball_scroll",
-            "staff": "magic_staff",
-            "ring": "magic_ring",
-            "dagger": "dagger",
+            # Create the message with context
+            message = get_strategy_decision_message(context)
             
-            # Location names
-            "tavern": "tavern",
-            "forest": "forest",
-            "cave": "cave",
-            "village": "village",
-            "market": "market",
-            "blacksmith": "blacksmith",
-            "clearing": "clearing",
-            "treasure": "treasure_room",
+            # Call OpenAI with tool calling
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": message},
+                    {"role": "user", "content": f"Analyze this player input: {user_input}"}
+                ],
+                tools=[tool for tool in AVAILABLE_TOOLS if tool["function"]["name"] == "decide_action_strategy"],
+                tool_choice={"type": "function", "function": {"name": "decide_action_strategy"}},
+                temperature=0.3
+            )
             
-            # Quest names
-            "goblin": "goblin_hunt",
-            "herb": "herb_collection",
-            "treasure": "lost_treasure",
+            # Extract tool call response
+            tool_call = response.choices[0].message.tool_calls[0]
+            function_args = json.loads(tool_call.function.arguments)
             
-            # Skill names
-            "heal": "healing",
-            "fireball": "fireball",
-            "lightning": "lightning_bolt",
-            "shield": "shield",
-            "stealth": "stealth"
-        }
-        
-        # Check for exact corrections first
-        if command in corrections:
-            corrected_command = corrections[command]
-            corrected_input = f"{corrected_command} {' '.join(args)}"
-            return corrected_input, True
-        
-        # Use fuzzy matching for similar commands
-        if self.available_actions:
-            # Extract base commands from available actions
-            base_commands = []
-            for action in self.available_actions:
-                if ' ' in action:
-                    base_commands.append(action.split()[0])
-                else:
-                    base_commands.append(action)
-            
-            # Find close matches
-            matches = get_close_matches(command, base_commands, n=1, cutoff=0.6)
-            if matches:
-                corrected_command = matches[0]
-                corrected_input = f"{corrected_command} {' '.join(args)}"
-                return corrected_input, True
-        
-        return user_input, False
-    
+            # Return the strategy decision
+            return {
+                "strategy": function_args.get("strategy", "dynamic"),
+                "confidence": float(function_args.get("confidence", 0.5)),
+                "suggested_action": function_args.get("suggested_action"),
+                "reasoning": function_args.get("reasoning", "No reasoning provided"),
+                "should_create_dynamic": bool(function_args.get("should_create_dynamic", True))
+            }
+                
+        except Exception as e:
+            print(f"Error in action strategy decision: {e}")
+            # Fallback decision
+            return {
+                "strategy": "dynamic",
+                "confidence": 0.3,
+                "suggested_action": None,
+                "reasoning": f"Error occurred during analysis: {e}",
+                "should_create_dynamic": True
+            }
+
     def create_dynamic_action(self, user_input: str, game_state: Dict[str, Any]) -> Optional[Action]:
-        """
+        """ 
         Use AI to create a dynamic action based on user input.
         Returns an Action object or None.
         """
-        if not self.api_key:
+        if not self.client:
             return None
             
         try:
-            # Ask AI to create an action
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+            # Create the message with context
+            message = get_dynamic_action_message(user_input, game_state)
+            
+            # Call OpenAI with tool calling
+            response = self.client.chat.completions.create(
+                model="gpt-4",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": f"""You are a creative game master for a D&D text adventure. Your job is to create unique, fun, and imaginative actions based on what the player wants to do.
-
-CURRENT GAME STATE:
-- Location: {game_state.get('player_location', 'unknown')}
-- Health: {game_state.get('player_health', 100)}/100
-- Mana: {game_state.get('player_mana', 50)}/50
-- Gold: {game_state.get('player_gold', 100)}
-- Level: {game_state.get('player_level', 1)}
-- Active quests: {game_state.get('active_quests', [])}
-- Inventory: {game_state.get('inventory', [])}
-
-THE PLAYER SAID: "{user_input}"
-
-YOUR TASK: Create a dynamic action that fulfills the player's request. Be creative, imaginative, and fun! Think outside the box.
-
-ACTION CREATION GUIDELINES:
-1. **Be Creative**: Don't limit yourself to standard RPG actions. Think of unique, interesting, and fun things the player could do.
-2. **Make it Fun**: The action should be enjoyable and add to the player's experience.
-3. **Be Imaginative**: Consider magical effects, social interactions, environmental interactions, crafting, exploration, and more.
-4. **Balance it**: Make sure the action is appropriate for the player's level and resources.
-5. **Add Flavor**: Give the action personality and make it feel like part of a living world.
-
-POSSIBLE ACTION TYPES (but don't limit yourself to these):
-- **Magical**: Spells, enchantments, rituals, magical experiments
-- **Social**: Persuasion, intimidation, diplomacy, performance, deception
-- **Exploration**: Searching, investigating, climbing, swimming, flying
-- **Crafting**: Brewing, cooking, blacksmithing, enchanting, alchemy
-- **Combat**: Special attacks, defensive maneuvers, tactical actions
-- **Environmental**: Interacting with objects, manipulating the environment
-- **Character Development**: Training, meditation, learning, practicing
-- **Economic**: Trading, gambling, investing, bartering
-- **Mystical**: Divination, communing with spirits, reading omens
-- **Adventure**: Treasure hunting, dungeon delving, monster hunting
-- **Creative**: Art, music, storytelling, dancing, acting
-- **Survival**: Hunting, fishing, gathering, shelter building
-- **Transportation**: Riding, sailing, flying, teleporting
-- **Communication**: Animal handling, language learning, signaling
-- **Stealth**: Hiding, sneaking, disguising, lockpicking
-
-EFFECTS YOU CAN CREATE:
-- **Healing/Restoration**: heal, restore_mana, restore_stamina
-- **Resources**: add_gold, add_experience, add_item, learn_skill
-- **Movement**: move_to, teleport_to, unlock_location
-- **Combat**: damage_enemy, buff_ally, debuff_enemy
-- **Social**: improve_relationship, gain_reputation, unlock_dialogue
-- **Environmental**: change_weather, create_light, open_secret_passage
-- **Temporary**: invisibility, flight, enhanced_senses, protection
-- **Permanent**: unlock_ability, gain_title, establish_connection
-- **Story**: trigger_event, reveal_secret, advance_quest
-- **Creative**: create_art, compose_song, write_story
-
-COSTS TO CONSIDER:
-- **Resources**: mana, health, gold, stamina
-- **Time**: duration, cooldown, time_consuming
-- **Requirements**: level, items, skills, location, relationships
-- **Risks**: health_damage, reputation_loss, item_loss
-
-EXAMPLES OF CREATIVE ACTIONS:
-- "I want to dance" → "Tavern Dance Performance" (social, costs stamina, gains gold and reputation)
-- "I want to brew a potion" → "Alchemical Experimentation" (crafting, costs materials, creates random potion)
-- "I want to talk to animals" → "Beast Tongue Ritual" (magical, costs mana, unlocks animal communication)
-- "I want to climb the wall" → "Spider Climb" (exploration, costs stamina, reveals hidden area)
-- "I want to read minds" → "Mind Reading Spell" (magical, high mana cost, reveals NPC secrets)
-- "I want to become invisible" → "Shadow Cloak" (stealth, costs mana, temporary invisibility)
-- "I want to fly" → "Levitation Charm" (magical, costs mana, temporary flight ability)
-- "I want to predict the future" → "Divination Ritual" (mystical, costs gold, reveals quest hints)
-- "I want to tame a beast" → "Beast Bonding" (social, costs time, gains animal companion)
-- "I want to create fire" → "Pyromancy" (magical, costs mana, creates fire for various uses)
-
-RETURN A JSON OBJECT WITH THIS STRUCTURE:
-{{
-    "id": "unique_action_id",
-    "name": "Creative Action Name",
-    "description": "A detailed, flavorful description of what this action does",
-    "action_type": "magical|social|exploration|crafting|combat|environmental|character|economic|mystical|adventure|creative|survival|transportation|communication|stealth",
-    "parameters": {{}},
-    "targets": [],
-    "requirements": {{}},
-    "effects": {{}},
-    "cost": {{}},
-    "duration": null,
-    "cooldown": null,
-    "success_chance": 1.0
-}}
-
-Remember: Be creative, fun, and imaginative! Don't be afraid to create unique and interesting actions that will make the game more enjoyable."""
-                    }
+                    {"role": "system", "content": message},
+                    {"role": "user", "content": f"Create a dynamic action for: {user_input}"}
                 ],
+                tools=[tool for tool in AVAILABLE_TOOLS if tool["function"]["name"] == "create_dynamic_action"],
+                tool_choice={"type": "function", "function": {"name": "create_dynamic_action"}},
                 temperature=0.9
             )
             
-            # Parse AI response
-            content = response.choices[0].message["content"]
+            # Extract tool call response
+            tool_call = response.choices[0].message.tool_calls[0]
+            action_data = json.loads(tool_call.function.arguments)
             
-            # Extract JSON from response
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
-            if json_match:
-                action_data = json.loads(json_match.group())
-                
-                # Create Action object
-                action = Action(
-                    id=action_data.get("id", f"ai_action_{uuid.uuid4().hex[:8]}"),
-                    name=action_data.get("name", "AI Generated Action"),
-                    description=action_data.get("description", "An AI-generated action"),
-                    action_type=action_data.get("action_type", "utility"),
-                    parameters=action_data.get("parameters", {}),
-                    targets=action_data.get("targets", []),
-                    requirements=action_data.get("requirements", {}),
-                    effects=action_data.get("effects", {}),
-                    cost=action_data.get("cost", {}),
-                    duration=action_data.get("duration"),
-                    cooldown=action_data.get("cooldown"),
-                    success_chance=action_data.get("success_chance", 1.0),
-                    ai_generated=True
-                )
-                
-                return action
+            # Create Action object
+            action = Action(
+                id=action_data.get("id", f"ai_action_{uuid.uuid4().hex[:8]}"),
+                name=action_data.get("name", "AI Generated Action"),
+                description=action_data.get("description", "An AI-generated action"),
+                action_type=action_data.get("action_type", "utility"),
+                parameters=action_data.get("parameters", {}),
+                targets=action_data.get("targets", []),
+                requirements=action_data.get("requirements", {}),
+                effects=action_data.get("effects", {}),
+                cost=action_data.get("cost", {}),
+                duration=action_data.get("duration"),
+                cooldown=action_data.get("cooldown"),
+                success_chance=action_data.get("success_chance", 1.0),
+                ai_generated=True
+            )
+            
+            return action
                 
         except Exception as e:
             print(f"Error creating dynamic action: {e}")
@@ -259,7 +150,7 @@ Remember: Be creative, fun, and imaginative! Don't be afraid to create unique an
         Use AI to suggest actions when user input doesn't match available commands.
         Returns a suggestion to create a dynamic action.
         """
-        if not self.api_key:
+        if not self.client:
             return None
             
         try:
@@ -274,55 +165,68 @@ Remember: Be creative, fun, and imaginative! Don't be afraid to create unique an
                 "inventory": game_state.get("inventory", [])
             }
             
-            # Ask AI for suggestion
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+            # Create the message with context
+            message = get_suggestion_message(user_input, context)
+            
+            # Call OpenAI with tool calling
+            response = self.client.chat.completions.create(
+                model="gpt-4",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": f"""You are a helpful assistant for a D&D text adventure game. 
-                        The player tried to do something that's not in the available actions: {user_input}
-                        
-                        Current game state:
-                        - Location: {context['current_location']}
-                        - Health: {context['player_health']}
-                        - Mana: {context['player_mana']}
-                        - Gold: {context['player_gold']}
-                        - Active quests: {context['active_quests']}
-                        
-                        Available actions: {context['available_actions']}
-                        
-                        Your job is to help the player by either:
-                        1. Suggesting the closest available action if their intent is clear
-                        2. Encouraging them to create a dynamic action for their unique request
-                        3. Providing helpful information about the game
-                        
-                        If the player wants to do something creative, unique, or not in the available actions,
-                        encourage them to try it - the game can create custom actions for almost anything!
-                        
-                        Be encouraging and creative in your response."""
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Player said: {user_input}"
-                    }
+                    {"role": "system", "content": message},
+                    {"role": "user", "content": f"Player said: {user_input}"}
                 ],
+                tools=[tool for tool in AVAILABLE_TOOLS if tool["function"]["name"] == "provide_suggestion"],
+                tool_choice={"type": "function", "function": {"name": "provide_suggestion"}},
                 temperature=0.8
             )
+            
+            # Extract tool call response
+            tool_call = response.choices[0].message.tool_calls[0]
+            suggestion_data = json.loads(tool_call.function.arguments)
             
             # Return a simple response encouraging dynamic action creation
             return {
                 "type": "response",
-                "message": response.choices[0].message["content"]
+                "message": suggestion_data.get("message", "I can help you with that!"),
+                "suggested_action": suggestion_data.get("suggested_action"),
+                "encourage_dynamic": suggestion_data.get("encourage_dynamic", True)
             }
                 
         except Exception as e:
             print(f"AI suggestion error: {e}")
             return None
     
-    def _create_function_definitions(self) -> List[Dict[str, Any]]:
-        """This method is no longer used - function calling is removed"""
-        return []
+    def find_closest_existing_action(self, user_input: str) -> Tuple[str, float]:
+        """
+        Find the closest matching existing action using fuzzy matching.
+        Returns (action_name, similarity_score).
+        """
+        if not self.available_actions:
+            return None, 0.0
+        
+        # Clean and normalize user input
+        clean_input = user_input.lower().strip()
+        
+        # Try exact matches first
+        for action in self.available_actions:
+            if clean_input == action.lower():
+                return action, 1.0
+        
+        # Try partial matches
+        for action in self.available_actions:
+            if action.lower() in clean_input or clean_input in action.lower():
+                return action, 0.8
+        
+        # Use difflib for fuzzy matching
+        matches = get_close_matches(clean_input, [a.lower() for a in self.available_actions], n=1, cutoff=0.6)
+        if matches:
+            matched_action = matches[0]
+            # Find the original action name
+            for action in self.available_actions:
+                if action.lower() == matched_action:
+                    return action, 0.6
+        
+        return None, 0.0
 
 
 # Global instance

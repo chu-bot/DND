@@ -948,6 +948,103 @@ class GameEngine:
             print("❌ Failed to create dynamic action.")
             return False
 
+    def execute_suggested_action(self, suggested_action: str, original_command: List[str]) -> bool:
+        """
+        Execute a suggested action from the AI strategy decision.
+        Returns True if the action was successfully executed, False otherwise.
+        """
+        if not suggested_action:
+            return False
+        
+        # Parse the suggested action
+        suggested_parts = suggested_action.split()
+        if not suggested_parts:
+            return False
+        
+        suggested_cmd = suggested_parts[0].lower()
+        
+        try:
+            # Handle different types of suggested actions
+            if suggested_cmd == "status":
+                self.show_status()
+                return True
+            elif suggested_cmd == "inventory":
+                self.show_inventory()
+                return True
+            elif suggested_cmd == "skillbook":
+                self.show_skillbook()
+                return True
+            elif suggested_cmd == "available_quests":
+                self.show_available_quests()
+                return True
+            elif suggested_cmd == "map":
+                self.show_map()
+                return True
+            elif suggested_cmd == "npcs":
+                self.show_npcs()
+                return True
+            elif suggested_cmd == "shop":
+                self.show_shop()
+                return True
+            elif suggested_cmd == "dynamic_actions":
+                self.show_dynamic_actions()
+                return True
+            elif suggested_cmd == "move":
+                # Use the original command's location parameter
+                if len(original_command) > 1:
+                    location = original_command[1]
+                    return self.move_to_location(location)
+                else:
+                    print("❌ Move command requires a location parameter.")
+                    return False
+            elif suggested_cmd == "use":
+                # Use the original command's skill parameter
+                if len(original_command) > 1:
+                    skill = original_command[1]
+                    return self.use_skill(skill)
+                else:
+                    print("❌ Use command requires a skill parameter.")
+                    return False
+            elif suggested_cmd == "travel":
+                # Use the original command's location parameter
+                if len(original_command) > 1:
+                    location = original_command[1]
+                    return self.travel_to_location(location)
+                else:
+                    print("❌ Travel command requires a location parameter.")
+                    return False
+            elif suggested_cmd == "buy":
+                # Use the original command's item parameter
+                if len(original_command) > 1:
+                    item_id = original_command[1]
+                    return self.buy_item(item_id)
+                else:
+                    print("❌ Buy command requires an item parameter.")
+                    return False
+            elif suggested_cmd == "talk":
+                # Use the original command's NPC parameter
+                if len(original_command) > 1:
+                    npc_id = original_command[1]
+                    return self.talk_to_npc(npc_id)
+                else:
+                    print("❌ Talk command requires an NPC parameter.")
+                    return False
+            elif suggested_cmd == "start":
+                # Use the original command's quest parameter
+                if len(original_command) > 1:
+                    quest = original_command[1]
+                    return self.start_quest(quest)
+                else:
+                    print("❌ Start command requires a quest parameter.")
+                    return False
+            else:
+                print(f"❌ Unknown suggested action: {suggested_action}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error executing suggested action: {e}")
+            return False
+
     def get_available_actions(self):
         """Return a list of available actions for the player at the current location."""
         actions = ["status", "inventory", "skillbook", "available_quests", "map", "npcs", "dynamic_actions"]
@@ -1005,13 +1102,7 @@ def main():
             user_input = input("\n> ").strip()
             if not user_input:
                 continue
-            
-            # First, try autocorrect
-            corrected_input, was_corrected = ai_handler.autocorrect_command(user_input)
-            if was_corrected:
-                print(f"🤖 Did you mean: {corrected_input}")
-                user_input = corrected_input
-            
+                        
             command = user_input.lower().split()
             if not command:
                 continue
@@ -1072,27 +1163,53 @@ def main():
                 print("Thanks for playing!")
                 break
             else:
-                # Try AI suggestion for unknown commands
+                # Use AI to decide the best strategy for handling this input
                 game_state_dict = {
                     "player_location": game.current_location,
                     "player_health": game.get_player().stats.health,
                     "player_mana": game.get_player().stats.mana,
                     "player_gold": game.get_player().gold,
+                    "player_level": game.get_player().stats.level,
                     "active_quests": game.get_player().quests_in_progress,
                     "inventory": game.get_player().inventory
                 }
                 
-                ai_suggestion = ai_handler.suggest_ai_action(user_input, game_state_dict)
+                # Get AI strategy decision
+                strategy = ai_handler.decide_action_strategy(user_input, game_state_dict)
                 
-                if ai_suggestion:
-                    print(f"🤖 {ai_suggestion['message']}")
-                    # Always try to create a dynamic action for unknown commands
-                    print("🤖 Let me create a custom action for you...")
+                print(f"🤖 Analysis: {strategy['reasoning']}")
+                print(f"   Confidence: {strategy['confidence']:.1%}")
+                
+                if strategy['strategy'] == 'existing' and strategy['suggested_action']:
+                    # Try to execute the suggested existing action
+                    suggested_cmd = strategy['suggested_action'].split()[0]
+                    print(f"🤖 Trying to execute: {strategy['suggested_action']}")
+                    
+                    # Use the helper method to execute the suggested action
+                    if game.execute_suggested_action(strategy['suggested_action'], command):
+                        # Action was successful
+                        pass
+                    else:
+                        # Action failed, try dynamic action if recommended
+                        if strategy['should_create_dynamic']:
+                            print("🤖 Creating a dynamic action instead...")
+                            if game.create_dynamic_action(user_input):
+                                print("💡 You can now use 'dynamic_actions' to see your custom actions!")
+                        else:
+                            print("Unknown or unavailable command. Type 'help' for available actions.")
+                
+                elif strategy['strategy'] == 'dynamic' or strategy['should_create_dynamic']:
+                    # Create a dynamic action
+                    print("🤖 Creating a custom action for you...")
                     if game.create_dynamic_action(user_input):
                         print("💡 You can now use 'dynamic_actions' to see your custom actions!")
+                    else:
+                        print("❌ Failed to create dynamic action.")
+                        print("Unknown or unavailable command. Type 'help' for available actions.")
+                
                 else:
-                    # Try to create a dynamic action for unknown commands
-                    print("🤖 That's not a standard action. Let me create a custom action for you...")
+                    # Fallback for low confidence or unclear strategy
+                    print("🤖 I'm not sure what you want to do. Let me try creating a custom action...")
                     if game.create_dynamic_action(user_input):
                         print("💡 You can now use 'dynamic_actions' to see your custom actions!")
                     else:
