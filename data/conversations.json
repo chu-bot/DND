@@ -1,0 +1,12 @@
+{
+  "tavern_conversation": {
+    "id": "tavern_conversation",
+    "root_dialogue": "tavern_greeting",
+    "dialogue_list": ["tavern_greeting", "quest_offer", "quest_accept", "quest_decline"]
+  },
+  "forest_conversation": {
+    "id": "forest_conversation",
+    "root_dialogue": "forest_warning",
+    "dialogue_list": ["forest_warning"]
+  }
+} 

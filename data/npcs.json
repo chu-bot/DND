@@ -1,0 +1,107 @@
+{
+  "tavern_keeper": {
+    "id": "tavern_keeper",
+    "name": "Old Tom",
+    "description": "A friendly tavern keeper with a warm smile and many stories to tell",
+    "personality": "Friendly, talkative, loves to share local gossip and rumors",
+    "location_id": "tavern",
+    "level": 1,
+    "conversation_id": "tavern_keeper_chat",
+    "quests_offered": [],
+    "shop_items": ["health_potion", "mana_potion", "leather_armor", "fireball_scroll"],
+    "dialogue_tree": {
+      "greeting": "Welcome to the Prancing Pony! What can I do for you today?",
+      "topics": ["local_rumors", "quests", "shop", "weather"],
+      "responses": {
+        "local_rumors": "I've heard some strange noises coming from the forest lately. Some say it's goblins, others say it's something worse...",
+        "quests": "Adventurers often find work here. Check the notice board or ask around!",
+        "shop": "I've got some basic supplies for travelers. What do you need?",
+        "weather": "The weather's been strange this season. Perfect for adventure, if you ask me!"
+      }
+    }
+  },
+  "quest_giver": {
+    "id": "quest_giver",
+    "name": "Captain Marcus",
+    "description": "A retired soldier who now helps coordinate local defense and quests",
+    "personality": "Serious, experienced, values honor and duty",
+    "location_id": "tavern",
+    "level": 5,
+    "conversation_id": "quest_giver_chat",
+    "quests_offered": ["goblin_hunt", "herb_collection"],
+    "shop_items": [],
+    "dialogue_tree": {
+      "greeting": "Ah, a new face. Looking for work, are you?",
+      "topics": ["goblin_problem", "herb_shortage", "training", "reputation"],
+      "responses": {
+        "goblin_problem": "Goblins have been raiding our farms. We need someone to deal with them.",
+        "herb_shortage": "Our healer needs rare herbs from the forest clearing. Can you help?",
+        "training": "A good adventurer is always learning. Practice your skills regularly.",
+        "reputation": "Your deeds will be remembered. Build a good reputation in these parts."
+      }
+    }
+  },
+  "blacksmith": {
+    "id": "blacksmith",
+    "name": "Greta Ironforge",
+    "description": "A skilled blacksmith who crafts weapons and armor",
+    "personality": "Hard-working, practical, takes pride in her craft",
+    "location_id": "blacksmith",
+    "level": 3,
+    "conversation_id": "blacksmith_chat",
+    "quests_offered": [],
+    "shop_items": ["iron_sword", "leather_armor", "magic_ring"],
+    "dialogue_tree": {
+      "greeting": "Welcome to my forge. Need something crafted or repaired?",
+      "topics": ["weapons", "armor", "crafting", "materials"],
+      "responses": {
+        "weapons": "I can craft any weapon you need, given the right materials.",
+        "armor": "Good armor can mean the difference between life and death.",
+        "crafting": "Crafting is an art. Each piece I make is unique.",
+        "materials": "I'm always looking for quality materials. Bring me rare metals and I'll make you something special."
+      }
+    }
+  },
+  "merchant": {
+    "id": "merchant",
+    "name": "Sarah the Merchant",
+    "description": "A traveling merchant with exotic goods from distant lands",
+    "personality": "Charismatic, shrewd, loves to haggle",
+    "location_id": "market",
+    "level": 2,
+    "conversation_id": "merchant_chat",
+    "quests_offered": [],
+    "shop_items": ["magic_staff", "magic_ring", "dagger"],
+    "dialogue_tree": {
+      "greeting": "Welcome! I have the finest goods from across the realm!",
+      "topics": ["travels", "magic_items", "prices", "gossip"],
+      "responses": {
+        "travels": "I've traveled far and wide. Every city has its secrets.",
+        "magic_items": "Magic items are rare and expensive, but worth every coin.",
+        "prices": "My prices are fair, but everything is negotiable for the right customer.",
+        "gossip": "I hear all sorts of interesting things on my travels. What would you like to know?"
+      }
+    }
+  },
+  "hermit": {
+    "id": "hermit",
+    "name": "Old Man Willow",
+    "description": "A mysterious hermit who lives in the forest clearing",
+    "personality": "Wise, mysterious, speaks in riddles",
+    "location_id": "clearing",
+    "level": 10,
+    "conversation_id": "hermit_chat",
+    "quests_offered": ["lost_treasure"],
+    "shop_items": [],
+    "dialogue_tree": {
+      "greeting": "Ah, a seeker of knowledge. What brings you to my humble abode?",
+      "topics": ["wisdom", "treasure", "forest_secrets", "prophecy"],
+      "responses": {
+        "wisdom": "Wisdom comes not from age, but from experience. What have you learned?",
+        "treasure": "There are treasures hidden in these woods, but they come with a price.",
+        "forest_secrets": "The forest holds many secrets. Some are beautiful, some are deadly.",
+        "prophecy": "I see things in the patterns of nature. The future is written in the leaves."
+      }
+    }
+  }
+} 

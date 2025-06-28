@@ -1,0 +1,52 @@
+{
+  "fireball": {
+    "id": "fireball",
+    "name": "Fireball",
+    "description": "A powerful explosion of fire that deals damage to enemies",
+    "skill_type": "active",
+    "target": "enemies",
+    "range": 60,
+    "area_of_effect": 20,
+    "cost": 3
+  },
+  "healing": {
+    "id": "healing",
+    "name": "Healing Touch",
+    "description": "Restore health to an ally or yourself",
+    "skill_type": "active",
+    "target": "allies",
+    "range": 30,
+    "area_of_effect": 0,
+    "cost": 2
+  },
+  "lightning_bolt": {
+    "id": "lightning_bolt",
+    "name": "Lightning Bolt",
+    "description": "A bolt of lightning that strikes a single target",
+    "skill_type": "active",
+    "target": "one_enemy",
+    "range": 90,
+    "area_of_effect": 0,
+    "cost": 4
+  },
+  "shield": {
+    "id": "shield",
+    "name": "Mage Shield",
+    "description": "Create a magical barrier that reduces incoming damage",
+    "skill_type": "active",
+    "target": "self",
+    "range": 0,
+    "area_of_effect": 0,
+    "cost": 1
+  },
+  "stealth": {
+    "id": "stealth",
+    "name": "Stealth",
+    "description": "Become invisible to enemies for a short time",
+    "skill_type": "passive",
+    "target": "self",
+    "range": 0,
+    "area_of_effect": 0,
+    "cost": 0
+  }
+} 

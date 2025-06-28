@@ -1,0 +1,42 @@
+{
+  "tavern_greeting": {
+    "id": "tavern_greeting",
+    "text": "Welcome to The Prancing Pony, traveler! What brings you to our humble establishment?",
+    "sender_id": "innkeeper",
+    "receiver_id": "player",
+    "condition": null,
+    "action": null
+  },
+  "quest_offer": {
+    "id": "quest_offer",
+    "text": "I have a job that needs doing. The forest has been overrun with goblins, and we need someone brave enough to clear them out. Interested?",
+    "sender_id": "innkeeper",
+    "receiver_id": "player",
+    "condition": null,
+    "action": "offer_quest_goblin_hunt"
+  },
+  "quest_accept": {
+    "id": "quest_accept",
+    "text": "Excellent! I'll mark you down for the goblin hunt. Be careful out there!",
+    "sender_id": "innkeeper",
+    "receiver_id": "player",
+    "condition": "quest_not_started",
+    "action": "start_quest_goblin_hunt"
+  },
+  "quest_decline": {
+    "id": "quest_decline",
+    "text": "No worries, I understand. The offer stands if you change your mind.",
+    "sender_id": "innkeeper",
+    "receiver_id": "player",
+    "condition": null,
+    "action": null
+  },
+  "forest_warning": {
+    "id": "forest_warning",
+    "text": "Be careful in the forest, adventurer. Strange things have been happening there lately.",
+    "sender_id": "villager",
+    "receiver_id": "player",
+    "condition": null,
+    "action": null
+  }
+} 

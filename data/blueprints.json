@@ -1,0 +1,49 @@
+{
+  "iron_sword_blueprint": {
+    "id": "iron_sword_blueprint",
+    "name": "Iron Sword Blueprint",
+    "resulting_item": "iron_sword",
+    "required_items": [
+      {"iron_ingot": 2},
+      {"leather_strip": 1}
+    ],
+    "required_skills": ["blacksmithing"],
+    "location_needed": "blacksmith"
+  },
+  "healing_potion_blueprint": {
+    "id": "healing_potion_blueprint",
+    "name": "Healing Potion Blueprint",
+    "resulting_item": "healing_potion",
+    "required_items": [
+      {"healing_herb": 3},
+      {"water": 1},
+      {"glass_bottle": 1}
+    ],
+    "required_skills": ["alchemy"],
+    "location_needed": "alchemist_shop"
+  },
+  "magic_staff_blueprint": {
+    "id": "magic_staff_blueprint",
+    "name": "Magic Staff Blueprint",
+    "resulting_item": "magic_staff",
+    "required_items": [
+      {"wooden_staff": 1},
+      {"fire_crystal": 1},
+      {"magic_essence": 2}
+    ],
+    "required_skills": ["enchanting"],
+    "location_needed": "wizard_tower"
+  },
+  "leather_armor_blueprint": {
+    "id": "leather_armor_blueprint",
+    "name": "Leather Armor Blueprint",
+    "resulting_item": "leather_armor",
+    "required_items": [
+      {"leather": 4},
+      {"thread": 2},
+      {"metal_buckles": 2}
+    ],
+    "required_skills": ["leatherworking"],
+    "location_needed": "tanner_shop"
+  }
+} 

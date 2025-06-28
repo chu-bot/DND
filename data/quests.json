@@ -1,0 +1,79 @@
+{
+  "goblin_hunt": {
+    "id": "goblin_hunt",
+    "name": "Goblin Hunt",
+    "status": "not_started",
+    "description": "Clear the forest of goblin raiders that have been terrorizing travelers",
+    "objectives": [
+      {
+        "id": "kill_goblins",
+        "description": "Defeat 3 goblins",
+        "completed": false,
+        "required_count": 3,
+        "current_count": 0
+      },
+      {
+        "id": "find_camp",
+        "description": "Locate the goblin camp",
+        "completed": false,
+        "required_count": 1,
+        "current_count": 0
+      }
+    ],
+    "level": 1,
+    "reward": {
+      "gold": 100,
+      "experience": 50,
+      "items": ["iron_sword"]
+    }
+  },
+  "lost_treasure": {
+    "id": "lost_treasure",
+    "name": "Lost Treasure",
+    "status": "not_started",
+    "description": "Find the ancient treasure hidden in the depths of the cave",
+    "objectives": [
+      {
+        "id": "explore_cave",
+        "description": "Explore the cave system",
+        "completed": false,
+        "required_count": 1,
+        "current_count": 0
+      },
+      {
+        "id": "find_chest",
+        "description": "Locate the treasure chest",
+        "completed": false,
+        "required_count": 1,
+        "current_count": 0
+      }
+    ],
+    "level": 2,
+    "reward": {
+      "gold": 200,
+      "experience": 100,
+      "items": ["magic_ring"]
+    }
+  },
+  "herb_collection": {
+    "id": "herb_collection",
+    "name": "Herb Collection",
+    "status": "not_started",
+    "description": "Collect rare herbs for the local alchemist",
+    "objectives": [
+      {
+        "id": "collect_herbs",
+        "description": "Collect 5 healing herbs",
+        "completed": false,
+        "required_count": 5,
+        "current_count": 0
+      }
+    ],
+    "level": 1,
+    "reward": {
+      "gold": 75,
+      "experience": 25,
+      "items": ["healing_potion", "healing_potion"]
+    }
+  }
+} 

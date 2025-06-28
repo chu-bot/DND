@@ -1,0 +1,83 @@
+{
+  "iron_sword": {
+    "id": "iron_sword",
+    "name": "Iron Sword",
+    "description": "A basic iron sword, reliable and sharp",
+    "cost": 50,
+    "rarity": "common",
+    "weight": 3.0,
+    "skill": null
+  },
+  "magic_staff": {
+    "id": "magic_staff",
+    "name": "Magic Staff",
+    "description": "A staff that enhances magical abilities and contains the power of fire",
+    "cost": 200,
+    "rarity": "uncommon",
+    "weight": 2.0,
+    "skill": "fireball"
+  },
+  "healing_potion": {
+    "id": "healing_potion",
+    "name": "Healing Potion",
+    "description": "A red potion that restores health when consumed",
+    "cost": 25,
+    "rarity": "common",
+    "weight": 0.5,
+    "skill": null
+  },
+  "leather_armor": {
+    "id": "leather_armor",
+    "name": "Leather Armor",
+    "description": "Light armor made from tanned leather",
+    "cost": 75,
+    "rarity": "common",
+    "weight": 8.0,
+    "skill": null
+  },
+  "magic_ring": {
+    "id": "magic_ring",
+    "name": "Ring of Protection",
+    "description": "A magical ring that provides defensive bonuses",
+    "cost": 150,
+    "rarity": "rare",
+    "weight": 0.1,
+    "skill": "shield"
+  },
+  "dagger": {
+    "id": "dagger",
+    "name": "Stealth Dagger",
+    "description": "A small, sharp dagger perfect for stealth attacks",
+    "cost": 30,
+    "rarity": "common",
+    "weight": 1.0,
+    "skill": "stealth"
+  },
+  "health_potion": {
+    "id": "health_potion",
+    "name": "Health Potion",
+    "description": "A red potion that restores 50 health points when consumed",
+    "cost": 30,
+    "rarity": "common",
+    "weight": 0.5,
+    "skill": null
+  },
+  "mana_potion": {
+    "id": "mana_potion",
+    "name": "Mana Potion",
+    "description": "A blue potion that restores 25 mana points when consumed",
+    "cost": 25,
+    "rarity": "common",
+    "weight": 0.5,
+    "skill": null
+  },
+  "fireball_scroll": {
+    "id": "fireball_scroll",
+    "name": "Scroll of Fireball",
+    "description": "A magical scroll that teaches the fireball spell",
+    "cost": 100,
+    "rarity": "uncommon",
+    "weight": 0.1,
+    "skill": "fireball"
+  }
+} 
