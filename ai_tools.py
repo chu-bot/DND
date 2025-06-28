@@ -90,7 +90,7 @@ DYNAMIC_ACTION_TOOL = {
                 },
                 "cost": {
                     "type": "object",
-                    "description": "Resource costs (mana, health, gold, stamina)"
+                    "description": "Resource costs (mana, health, gold)"
                 },
                 "duration": {
                     "type": ["number", "null"],
