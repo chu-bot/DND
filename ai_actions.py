@@ -6,7 +6,7 @@ from difflib import get_close_matches
 from openai import OpenAI
 from game_types import Action
 from ai_prompts import get_strategy_decision_message, get_dynamic_action_message, get_suggestion_message
-from ai_tools import AVAILABLE_TOOLS, TOOL_FUNCTIONS
+from ai_tools import AVAILABLE_TOOLS
 
 
 class AIActionHandler:

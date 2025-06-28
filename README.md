@@ -1,9 +1,9 @@
 
 **6/28:**
 
-Reminders -> Find a markdown converter
+Focusing on Dynamic / Existing AI Actions and the decision-making process, `ai_prompts`, `ai_tools`, and `ai_actions`
 
-* Automatic Work - Refactored AI prompts tool. Previously, dynamic actions lived in ai_actions and was clogging the file. Redistributed code, so system prompts now live in ai_prompts. Additionally, reconfigured decision + dynamic_action_creater to use function calling.
+* Automatic Work So Far (3:32 PM) - Refactored AI prompts tool. Previously, dynamic actions lived in ai_actions and was clogging the file. Redistributed code, so system prompts now live in ai_prompts. Additionally, reconfigured decision + dynamic_action_creater to use function calling.
 
 
 * Manual Work - Going through and thinking about AI actions in depth
@@ -21,3 +21,6 @@ Other bytes to do:
  -> go through system prompts, consolidate info that all share, analyze resources, impact, few-shot examples
  -> Figure out how game_state interfaces with prompt outputs
  -> build out suite of tests
+ -> start work on personal AI commandments
+ -> extension list for Mom+Dad, configure Ruff + figure out best extensions
+ -> get a markdown extension
