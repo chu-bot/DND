@@ -13,6 +13,8 @@ Focusing on Dynamic / Existing AI Actions and the decision-making process, `ai_p
     * new action needed: "tool use" with only one tool, defining the action primitive. 
  -> decision #2: name_tbd - should the player be allowed to do this? Increasing a level or granting an item is a fitting primitive, but would disrupt immersion + ruin difficulty and player experience.
 
+side-note: how to handle changes in existing state? Is that a third decision? Like if I punch the innkeeper who gives me the quest, then naturally he won't want to give me the quest anymore. How do we expose the state?
+
 In which order should we figure this out? My two-cents is decision #2 first, because a NO would mean that decision #1 doesn't need to run. However, 3 function calls would need to run each time a player wanted to perform an action like this, which might get expensive fast. 
 
 
@@ -24,3 +26,6 @@ Other bytes to do:
  -> start work on personal AI commandments
  -> extension list for Mom+Dad, configure Ruff + figure out best extensions
  -> get a markdown extension
+ -> refactor suggestions, change engine w/ case-by-case logic
+     -> suggestion should return not only the action w/ primitives filled-out, but also a description of what occurs (or the trigger to the primitive if that's what is happening)
+ -> try and find a dnd skillbook/book that we can scrape
