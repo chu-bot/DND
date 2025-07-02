@@ -60,7 +60,7 @@ class AIActionHandler:
             
             # Call OpenAI with tool calling
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Analyze this player input: {user_input}"}
@@ -108,7 +108,7 @@ class AIActionHandler:
             
             # Call OpenAI with tool calling
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Create a dynamic action for: {user_input}"}
@@ -170,7 +170,7 @@ class AIActionHandler:
             
             # Call OpenAI with tool calling
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Player said: {user_input}"}
