@@ -1,0 +1,11 @@
+todos:
+-> clunky naming system, not immediately obvious which prompt corresponds to what (IDEK what `suggestion_prompt` corresponds to)
+ -> go through system prompts, consolidate info that all share, analyze resources, impact, few-shot examples
+ -> Figure out how game_state interfaces with prompt outputs
+ -> build out suite of tests
+ -> start work on personal AI commandments
+ -> extension list for Mom+Dad, configure Ruff + figure out best extensions
+ -> get a markdown extension
+ -> refactor suggestions, change engine w/ case-by-case logic
+     -> suggestion should return not only the action w/ primitives filled-out, but also a description of what occurs (or the trigger to the primitive if that's what is happening)
+ -> try and find a dnd skillbook/book that we can scrape

@@ -29,3 +29,16 @@ Other bytes to do:
  -> refactor suggestions, change engine w/ case-by-case logic
      -> suggestion should return not only the action w/ primitives filled-out, but also a description of what occurs (or the trigger to the primitive if that's what is happening)
  -> try and find a dnd skillbook/book that we can scrape
+
+ **7/2**
+
+ * Conversation Primitive
+  -> Currently, we have a dialogue and conversation primitive. Each NPC has ONLY ONE associated conversation currently, which limits potential AI people responses. Conersation + dialogue primitives are not the right way to go about this. How to balance hardcode + AI responses?
+  -> Potential: 3-4 conversation starters detailing hard-coded answers, one chance to have the conversation thread, otherwise the NPC mentions the repeated nature (maybe 2 for quests)
+    -> New topics will be stored as a new conversation path, and categorized into essential/non-essential based on how much it can change the story (if the NPC talks about a potential new location that was their hometown, and how to get there, that's essential. Mentioning what they had for dinner last night is probably less so)
+    -> let the AI choose 1) how close a question is to an existing thread, in which case it denies the option to talk. Otherwise, it will create a new conversation thread
+    -> 2) essential, non-essential. If it's essential, then we modify / add data to the adventure creating that option
+    -> give the AI an extremely high temperature
+    -> add a temperament / likeability to player field to the `Player` type, and add a max # of questions you can ask in addition to the pre-set paths.
+
+side-note: Figure out how the AI can modify existing data within the gamestate - get dad's two cents on this?
