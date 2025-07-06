@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any, Union, Tuple
 from enum import Enum
+from datetime import datetime, timedelta
 import json
-from datetime import datetime
+import uuid
 
 
 class Rarity(Enum):
@@ -158,6 +159,40 @@ class Entity:
 
 
 @dataclass
+class ConversationNode:
+    """Represents a conversation topic or thread"""
+    topic: str
+    content: str
+    is_essential: bool
+    repetition_count: int = 0
+    player_relationship_impact: int = 0
+    created_dynamically: bool = False
+    related_data_modifications: List[Dict[str, Any]] = field(default_factory=list)
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
+@dataclass
+class DynamicExchange:
+    """Represents a dynamic conversation exchange"""
+    player_input: str
+    npc_response: str
+    similarity_score: float
+    is_essential: bool
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
+@dataclass
+class ConversationState:
+    """Tracks conversation state for an NPC"""
+    npc_id: str
+    conversation_history: List[DynamicExchange] = field(default_factory=list)
+    essential_topics_created: List[str] = field(default_factory=list)
+    relationship_level: int = 0
+    max_questions_remaining: int = 10
+    last_interaction: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
+@dataclass
 class NPC:
     id: str
     name: str
@@ -169,6 +204,10 @@ class NPC:
     quests_offered: List[str] = field(default_factory=list)
     shop_items: List[str] = field(default_factory=list)
     dialogue_tree: Dict[str, Any] = field(default_factory=dict)
+    bio: str = ""  # Detailed personality and background for AI conversations
+    conversation_nodes: List[ConversationNode] = field(default_factory=list)  # Dynamic conversation topics
+    temperament: str = "neutral"  # friendly, neutral, hostile, etc.
+    max_daily_questions: int = 10  # Maximum questions player can ask per day
 
 
 @dataclass
@@ -423,6 +462,87 @@ class Action:
 
 
 @dataclass
+class DataChange:
+    """Represents a single change to game data"""
+    timestamp: str
+    data_type: str  # "location", "quest", "item", "npc", "skill", "blueprint"
+    target_id: str
+    field_name: str
+    old_value: Any
+    new_value: Any
+    user_input: str
+    reasoning: str
+    change_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "timestamp": self.timestamp,
+            "data_type": self.data_type,
+            "target_id": self.target_id,
+            "field_name": self.field_name,
+            "old_value": self.old_value,
+            "new_value": self.new_value,
+            "user_input": self.user_input,
+            "reasoning": self.reasoning,
+            "change_id": self.change_id
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'DataChange':
+        """Create from dictionary"""
+        return cls(**data)
+
+
+@dataclass
+class ChangeTracker:
+    """Tracks all changes made to game data"""
+    changes: List[DataChange] = field(default_factory=list)
+    
+    def add_change(self, data_type: str, target_id: str, field_name: str, 
+                   old_value: Any, new_value: Any, user_input: str, reasoning: str):
+        """Add a new change to the tracker"""
+        change = DataChange(
+            timestamp=datetime.now().isoformat(),
+            data_type=data_type,
+            target_id=target_id,
+            field_name=field_name,
+            old_value=old_value,
+            new_value=new_value,
+            user_input=user_input,
+            reasoning=reasoning
+        )
+        self.changes.append(change)
+        return change
+    
+    def get_changes_for(self, data_type: str = None, target_id: str = None) -> List[DataChange]:
+        """Get changes filtered by data type and/or target ID"""
+        filtered = self.changes
+        if data_type:
+            filtered = [c for c in filtered if c.data_type == data_type]
+        if target_id:
+            filtered = [c for c in filtered if c.target_id == target_id]
+        return filtered
+    
+    def get_recent_changes(self, hours: int = 24) -> List[DataChange]:
+        """Get changes from the last N hours"""
+        cutoff = datetime.now() - timedelta(hours=hours)
+        return [c for c in self.changes if datetime.fromisoformat(c.timestamp) > cutoff]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "changes": [change.to_dict() for change in self.changes]
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ChangeTracker':
+        """Create from dictionary"""
+        changes = [DataChange.from_dict(change_data) for change_data in data.get("changes", [])]
+        return cls(changes=changes)
+
+
+@dataclass
 class GameState:
     """Dynamic game state that changes during gameplay"""
     session_id: str
@@ -438,9 +558,11 @@ class GameState:
     discovered_locations: List[str] = field(default_factory=list)
     npc_relationships: Dict[str, int] = field(default_factory=dict)  # NPC ID -> relationship level
     conversation_history: Dict[str, List[str]] = field(default_factory=dict)  # NPC ID -> conversation history
+    conversation_states: Dict[str, ConversationState] = field(default_factory=dict)  # NPC ID -> conversation state
     world_events: List[Dict[str, Any]] = field(default_factory=list)
     temporary_effects: Dict[str, Any] = field(default_factory=dict)
     ai_generated_actions: Dict[str, 'Action'] = field(default_factory=dict)  # AI-created actions
+    change_tracker: ChangeTracker = field(default_factory=ChangeTracker)  # Track all data modifications
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
@@ -458,9 +580,18 @@ class GameState:
             "discovered_locations": self.discovered_locations,
             "npc_relationships": self.npc_relationships,
             "conversation_history": self.conversation_history,
+            "conversation_states": {k: {
+                "npc_id": v.npc_id,
+                "conversation_history": [{"player_input": ex.player_input, "npc_response": ex.npc_response, "similarity_score": ex.similarity_score, "is_essential": ex.is_essential, "created_at": ex.created_at} for ex in v.conversation_history],
+                "essential_topics_created": v.essential_topics_created,
+                "relationship_level": v.relationship_level,
+                "max_questions_remaining": v.max_questions_remaining,
+                "last_interaction": v.last_interaction
+            } for k, v in self.conversation_states.items()},
             "world_events": self.world_events,
             "temporary_effects": self.temporary_effects,
-            "ai_generated_actions": {k: v.to_dict() for k, v in self.ai_generated_actions.items()}
+            "ai_generated_actions": {k: v.to_dict() for k, v in self.ai_generated_actions.items()},
+            "change_tracker": self.change_tracker.to_dict()
         }
     
     @classmethod
@@ -468,11 +599,16 @@ class GameState:
         """Create from dictionary"""
         # Handle AI-generated actions separately
         ai_actions_data = data.pop("ai_generated_actions", {})
+        # Handle change tracker separately
+        change_tracker_data = data.pop("change_tracker", {})
         game_state = cls(**data)
         
         # Convert AI actions back to Action objects
         for action_id, action_data in ai_actions_data.items():
             game_state.ai_generated_actions[action_id] = Action.from_dict(action_data)
+        
+        # Load change tracker
+        game_state.change_tracker = ChangeTracker.from_dict(change_tracker_data)
         
         return game_state
     
@@ -486,10 +622,71 @@ class GameState:
         """Load state from file"""
         try:
             with open(filename, 'r') as f:
-                data = json.load(f)
-            return cls.from_dict(data)
+                content = f.read().strip()
+                if not content:  # Handle empty file
+                    return cls.create_new_game_state()
+                data = json.loads(content)
+            
+            # Create GameState object from loaded data
+            game_state = cls(
+                session_id=data.get("session_id", str(uuid.uuid4())),
+                timestamp=data.get("timestamp", datetime.now().isoformat()),
+                player_location=data.get("player_location", "tavern"),
+                player_health=data.get("player_health", 100),
+                player_mana=data.get("player_mana", 50),
+                player_gold=data.get("player_gold", 100),
+                player_level=data.get("player_level", 1),
+                player_experience=data.get("player_experience", 0),
+                active_quests=data.get("active_quests", []),
+                completed_quests=data.get("completed_quests", []),
+                discovered_locations=data.get("discovered_locations", ["tavern"]),
+                npc_relationships=data.get("npc_relationships", {}),
+                conversation_history=data.get("conversation_history", {}),
+                conversation_states={},  # Will be populated from data
+                world_events=data.get("world_events", []),
+                temporary_effects=data.get("temporary_effects", {}),
+                ai_generated_actions={},
+                change_tracker=ChangeTracker.from_dict(data.get("change_tracker", {}))
+            )
+            
+            # Load conversation states
+            conversation_states_data = data.get("conversation_states", {})
+            for npc_id, state_data in conversation_states_data.items():
+                # Convert conversation history back to DynamicExchange objects
+                conversation_history = []
+                for ex_data in state_data.get("conversation_history", []):
+                    exchange = DynamicExchange(
+                        player_input=ex_data["player_input"],
+                        npc_response=ex_data["npc_response"],
+                        similarity_score=ex_data["similarity_score"],
+                        is_essential=ex_data["is_essential"],
+                        created_at=ex_data["created_at"]
+                    )
+                    conversation_history.append(exchange)
+                
+                conversation_state = ConversationState(
+                    npc_id=state_data["npc_id"],
+                    conversation_history=conversation_history,
+                    essential_topics_created=state_data.get("essential_topics_created", []),
+                    relationship_level=state_data.get("relationship_level", 0),
+                    max_questions_remaining=state_data.get("max_questions_remaining", 10),
+                    last_interaction=state_data.get("last_interaction", datetime.now().isoformat())
+                )
+                game_state.conversation_states[npc_id] = conversation_state
+            
+            # Load AI-generated actions
+            ai_actions_data = data.get("ai_generated_actions", {})
+            for action_id, action_data in ai_actions_data.items():
+                game_state.ai_generated_actions[action_id] = Action(**action_data)
+            
+            return game_state
+            
         except FileNotFoundError:
-            return None
+            # Create new game state if file doesn't exist
+            return cls.create_new_game_state()
+        except Exception as e:
+            print(f"Error loading game state: {e}")
+            return cls.create_new_game_state()
     
     def add_ai_action(self, action: 'Action'):
         """Add an AI-generated action to the game state"""
@@ -510,3 +707,27 @@ class GameState:
             if can_perform:
                 available_actions.append(action)
         return available_actions
+    
+    @classmethod
+    def create_new_game_state(cls) -> 'GameState':
+        """Create a new game state with default values"""
+        return cls(
+            session_id=str(uuid.uuid4()),
+            timestamp=datetime.now().isoformat(),
+            player_location="tavern",
+            player_health=100,
+            player_mana=50,
+            player_gold=100,
+            player_level=1,
+            player_experience=0,
+            active_quests=[],
+            completed_quests=[],
+            discovered_locations=["tavern"],
+            npc_relationships={},
+            conversation_history={},
+            conversation_states={},
+            world_events=[],
+            temporary_effects={},
+            ai_generated_actions={},
+            change_tracker=ChangeTracker()
+        )
