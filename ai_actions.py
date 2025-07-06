@@ -1,6 +1,5 @@
 import os
 import json
-import re
 from typing import List, Dict, Any, Optional, Tuple
 from difflib import get_close_matches
 from openai import OpenAI

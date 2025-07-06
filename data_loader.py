@@ -1,7 +1,11 @@
 import json
 import os
 from typing import Dict, Any, List, Optional
-from game_types import *
+from game_types import (
+    SkillType, TargetType, Rarity, Objective, QuestStatus,
+    Skill, Item, Location, Blueprint, DialogueInstance,
+    Conversation, NPC, Quest
+)
 
 
 class DataLoader:

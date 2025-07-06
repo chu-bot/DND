@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, Union, Tuple
+from typing import List, Optional, Dict, Any, Tuple
 from enum import Enum
 from datetime import datetime, timedelta
 import json
@@ -73,17 +73,6 @@ class Objective:
     completed: bool = False
     required_count: int = 1
     current_count: int = 0
-
-
-@dataclass
-class Quest:
-    id: str
-    name: str
-    status: QuestStatus
-    description: str
-    objectives: List[Objective]
-    level: int
-    reward: Dict[str, Any]
 
 
 @dataclass

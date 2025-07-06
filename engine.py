@@ -1,4 +1,9 @@
-from game_types import *
+from game_types import (
+    SkillType, QuestStatus,
+    Skill, Item, Location, Blueprint, DialogueInstance,
+    Conversation, Stats, Entity, GameState,
+    NPC, Quest, ConversationState
+)
 from image import setup_image_generation, generate_game_images, display_image_url, image_gen
 from data_loader import data_loader
 from ai_actions import ai_handler
@@ -488,7 +493,7 @@ class GameEngine:
             for quest_id, quest, access_type in available_quests:
                 print(f"   • {quest.name} (Level {quest.level})")
                 print(f"     {quest.description}")
-                print(f"     Objectives:")
+                print("     Objectives:")
                 for obj in quest.objectives:
                     print(f"       - {obj.description}")
                 print(f"     Reward: {self._format_reward(quest.reward)}")
@@ -692,7 +697,7 @@ class GameEngine:
             
             # Show conversation info
             if conversation_state:
-                print(f"\n💭 Conversation Info:")
+                print("\n💭 Conversation Info:")
                 print(f"   • Questions remaining: {conversation_state.max_questions_remaining}")
                 print(f"   • Relationship level: {conversation_state.relationship_level}")
                 if conversation_state.essential_topics_created:
@@ -910,7 +915,7 @@ class GameEngine:
         
         # Show available quests at current location
         if current_loc.quests:
-            print(f"\n📜 Quests available here:")
+            print("\n📜 Quests available here:")
             for quest_id in current_loc.quests:
                 quest = self.quests[quest_id]
                 if quest.status == QuestStatus.NOT_STARTED:
@@ -918,7 +923,7 @@ class GameEngine:
         
         # Show NPCs at current location
         if current_loc.npcs:
-            print(f"\n👥 NPCs here:")
+            print("\n👥 NPCs here:")
             for npc_id in current_loc.npcs:
                 if npc_id in self.npcs:
                     npc = self.npcs[npc_id]
@@ -926,12 +931,12 @@ class GameEngine:
                     print(f"     Command: talk {npc_id}")
         
         # Show where you can travel
-        print(f"\n🚶 Where you can go:")
+        print("\n🚶 Where you can go:")
         
         # Sub-locations (easy travel - use 'move')
         if current_loc.sub_locations:
-            print(f"   📍 Nearby (sub-locations) - Use 'move':")
-            print(f"      These are connected areas you can walk to directly.")
+            print("   📍 Nearby (sub-locations) - Use 'move':")
+            print("      These are connected areas you can walk to directly.")
             for sub_id in current_loc.sub_locations:
                 sub = self.locations[sub_id]
                 print(f"      • {sub.name} - {sub.description[:50]}...")
@@ -945,8 +950,8 @@ class GameEngine:
                     accessible_locations.append((loc_id, location))
         
         if accessible_locations:
-            print(f"   🌍 Other locations - Use 'travel':")
-            print(f"      These require longer journeys and may have requirements.")
+            print("   🌍 Other locations - Use 'travel':")
+            print("      These require longer journeys and may have requirements.")
             for loc_id, location in accessible_locations:
                 requirement = self._get_travel_requirement(loc_id)
                 print(f"      • {location.name} - {location.description[:50]}...")
@@ -1093,7 +1098,7 @@ class GameEngine:
             self.ai_handler = AIActionHandler()
         
         try:
-            print(f"   🤖 Using AI to execute immediate action...")
+            print("   🤖 Using AI to execute immediate action...")
             
             # Create the immediate action message
             message = get_immediate_action_message(user_input, game_state)
@@ -1215,7 +1220,7 @@ class GameEngine:
                 return False
             
             if not filtered_modifications:
-                print(f"   ❌ No valid modifications after balance validation")
+                print("   ❌ No valid modifications after balance validation")
                 return False
             
             # Apply modifications and track changes
@@ -1618,7 +1623,6 @@ class GameEngine:
     def _is_ingenious_modification(self, user_input: str, new_value: str, ingenuity_score: float) -> bool:
         """Determine if a modification is ingenious enough to allow"""
         input_lower = user_input.lower()
-        value_lower = str(new_value).lower()
         
         # High ingenuity scenarios that should be allowed
         ingenious_patterns = [
@@ -1829,7 +1833,6 @@ class GameEngine:
         if target_id not in self.locations:
             return False, f"Location {target_id} not found", {}
         
-        location = self.locations[target_id]
         filtered_modifications = {}
         
         # Allow most location modifications as they're mostly cosmetic
@@ -1853,7 +1856,6 @@ class GameEngine:
         if target_id not in self.npcs:
             return False, f"NPC {target_id} not found", {}
         
-        npc = self.npcs[target_id]
         filtered_modifications = {}
         
         # Allow personality and description changes
@@ -2146,7 +2148,7 @@ def main():
                 # Step 3: Execute based on data action type
                 if data_action['action_type'] == 'create_new':
                     print("🆕 Creating new data...")
-                    success = self.create_new_data(user_input, data_action['data_type'], game_state_dict)
+                    success = game.create_new_data(user_input, data_action['data_type'], game_state_dict)
                     if success:
                         print(f"✅ Successfully created new {data_action['data_type']} data")
                     else:
@@ -2154,7 +2156,7 @@ def main():
                     
                 elif data_action['action_type'] == 'modify_existing':
                     print("✏️  Modifying existing data...")
-                    success = self.modify_existing_data(user_input, data_action['data_type'], game_state_dict)
+                    success = game.modify_existing_data(user_input, data_action['data_type'], game_state_dict)
                     if success:
                         print(f"✅ Successfully modified existing {data_action['data_type']} data")
                     else:
@@ -2162,7 +2164,7 @@ def main():
                     
                 else:  # immediate action
                     print("⚡ Executing immediate action...")
-                    success = self.execute_immediate_action(user_input, game_state_dict)
+                    success = game.execute_immediate_action(user_input, game_state_dict)
                     if success:
                         print("✅ Immediate action executed successfully")
                     else:
