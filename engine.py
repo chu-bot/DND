@@ -1048,7 +1048,7 @@ class GameEngine:
             
             # Call OpenAI with tool calling for the specific data type
             response = self.ai_handler.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Create new {data_type} for: {user_input}"}
@@ -1105,7 +1105,7 @@ class GameEngine:
             
             # Call OpenAI with tool calling for immediate action
             response = self.ai_handler.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Execute immediate action: {user_input}"}
@@ -1176,7 +1176,7 @@ class GameEngine:
             
             # Call OpenAI with tool calling for data modification
             response = self.ai_handler.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Modify {data_type} data based on: {user_input}"}

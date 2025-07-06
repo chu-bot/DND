@@ -61,7 +61,7 @@ class AIConversationHandler:
             
             # Call OpenAI with tool calling
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Player asks: {player_input}"}
@@ -121,7 +121,7 @@ class AIConversationHandler:
             
             # Call OpenAI with high temperature for creative responses
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Player asks: {player_input}"}

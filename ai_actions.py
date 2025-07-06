@@ -65,7 +65,7 @@ class AIActionHandler:
             message = get_permission_check_message(user_input, game_state)
             
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Check permission for: {user_input}"}
@@ -126,7 +126,7 @@ class AIActionHandler:
             
             # Call OpenAI with tool calling
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Analyze this action: {user_input}"}
@@ -180,7 +180,7 @@ class AIActionHandler:
             
             # Call OpenAI with tool calling
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Select primitive for: {user_input}"}
@@ -250,7 +250,7 @@ class AIActionHandler:
             
             # Call OpenAI with tool calling
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Analyze this player input: {user_input}"}
@@ -309,7 +309,7 @@ class AIActionHandler:
             
             # Call OpenAI with tool calling
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": message},
                     {"role": "user", "content": f"Player said: {user_input}"}
