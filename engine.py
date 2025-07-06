@@ -2,11 +2,15 @@ from game_types import *
 from image import setup_image_generation, generate_game_images, display_image_url, image_gen
 from data_loader import data_loader
 from ai_actions import ai_handler
-from typing import Dict, List, Optional
+from ai_conversation import AIConversationHandler
+from ai_tools import AVAILABLE_TOOLS
+from ai_prompts import get_data_creation_message, get_immediate_action_message, get_data_modification_message
+from typing import Dict, List, Optional, Any, Tuple
 import random
 from datetime import datetime
 import os
 import uuid
+import json
 
 
 class GameEngine:
@@ -24,6 +28,7 @@ class GameEngine:
         self.player_id: Optional[str] = None
         self.images_enabled: bool = False
         self.game_state: Optional[GameState] = None
+        self.ai_conversation_handler: AIConversationHandler = AIConversationHandler()
         
         # Check if images are enabled in environment
         self.images_enabled = os.getenv("IMAGES_ENABLED", "false").lower() == "true"
@@ -642,8 +647,8 @@ class GameEngine:
         
         print("="*50)
     
-    def talk_to_npc(self, npc_id: str) -> bool:
-        """Start a conversation with an NPC."""
+    def talk_to_npc(self, npc_id: str, player_input: str = None) -> bool:
+        """Start or continue a conversation with an NPC."""
         if npc_id not in self.npcs:
             print(f"NPC {npc_id} not found!")
             return False
@@ -656,27 +661,206 @@ class GameEngine:
             print(f"{npc.name} is not at this location!")
             return False
         
-        print(f"\n💬 {npc.name}: {npc.dialogue_tree.get('greeting', 'Hello there!')}")
+        # Initialize conversation state if it doesn't exist
+        if self.game_state and npc_id not in self.game_state.conversation_states:
+            self.game_state.conversation_states[npc_id] = ConversationState(
+                npc_id=npc_id,
+                max_questions_remaining=npc.max_daily_questions
+            )
         
-        # Show conversation topics
-        topics = npc.dialogue_tree.get('topics', [])
-        if topics:
-            print("\nTopics you can discuss:")
-            for i, topic in enumerate(topics, 1):
-                print(f"   {i}. {topic.replace('_', ' ').title()}")
+        conversation_state = self.game_state.conversation_states[npc_id] if self.game_state else None
         
-        # Show available actions
-        print("\nAvailable actions:")
-        if npc.quests_offered:
-            print(f"   • start <quest_id> - Start a quest from {npc.name}")
-        if npc.shop_items:
-            print(f"   • shop - Browse {npc.name}'s wares")
+        # If no player input, show greeting and available topics
+        if not player_input:
+            print(f"\n💬 {npc.name}: {npc.dialogue_tree.get('greeting', 'Hello there!')}")
+            
+            # Show conversation topics
+            topics = npc.dialogue_tree.get('topics', [])
+            if topics:
+                print("\nTopics you can discuss:")
+                for i, topic in enumerate(topics, 1):
+                    topic_name = topic.replace('_', ' ').title()
+                    print(f"   {i}. {topic_name}")
+                    print(f"      Say: '{topic_name}' or '{topic}' or '{i}'")
+            
+            # Show available actions
+            print("\nAvailable actions:")
+            if npc.quests_offered:
+                print(f"   • start <quest_id> - Start a quest from {npc.name}")
+            if npc.shop_items:
+                print(f"   • shop - Browse {npc.name}'s wares")
+            
+            # Show conversation info
+            if conversation_state:
+                print(f"\n💭 Conversation Info:")
+                print(f"   • Questions remaining: {conversation_state.max_questions_remaining}")
+                print(f"   • Relationship level: {conversation_state.relationship_level}")
+                if conversation_state.essential_topics_created:
+                    print(f"   • Topics discovered: {len(conversation_state.essential_topics_created)}")
+            
+            print(f"\n💡 You can ask {npc.name} anything! Just type your question.")
+            
+            # Update conversation history
+            if self.game_state:
+                if npc_id not in self.game_state.conversation_history:
+                    self.game_state.conversation_history[npc_id] = []
+                self.game_state.conversation_history[npc_id].append(f"Talked at {datetime.now().isoformat()}")
+                self.game_state.save_to_file()
+            
+            return True
         
-        # Update conversation history
+        # Handle player input with AI conversation system
+        if not conversation_state:
+            print("Error: Conversation state not initialized!")
+            return False
+        
+        # Check if player has questions remaining
+        if conversation_state.max_questions_remaining <= 0:
+            print(f"💬 {npc.name}: I'm getting tired of all these questions. Maybe we can talk again later?")
+            return True
+        
+        # Check if input matches a pre-set topic first
+        preset_topic = self._match_preset_topic(player_input, npc)
+        if preset_topic:
+            return self._handle_preset_topic(npc, preset_topic, conversation_state)
+        
+        # Validate input - ignore single words, numbers, or very short inputs (but only if not a topic)
+        if self._is_invalid_conversation_input(player_input):
+            print(f"💬 {npc.name}: *looks at you curiously*")
+            return True
+        
+        # Analyze the conversation input with AI
+        analysis = self.ai_conversation_handler.analyze_conversation_input(
+            player_input, npc, conversation_state
+        )
+        
+        # Handle the conversation based on strategy
+        if analysis["strategy"] == "preset":
+            # Use pre-set response
+            preset_topic = analysis["preset_topic"]
+            preset_response = npc.dialogue_tree.get("responses", {}).get(preset_topic, "I'm not sure about that.")
+            print(f"💬 {npc.name}: {preset_response}")
+            
+            # Update conversation state
+            conversation_state = self.ai_conversation_handler.update_conversation_state(
+                conversation_state, player_input, preset_response, 
+                analysis["similarity_score"], analysis["is_essential"]
+            )
+            
+        elif analysis["strategy"] == "redirect":
+            # Redirect to pre-set topic with dynamic response
+            preset_topic = analysis["preset_topic"]
+            preset_response = npc.dialogue_tree.get("responses", {}).get(preset_topic, "")
+            
+            print(f"💬 {npc.name}: {analysis['npc_response']}")
+            if preset_response:
+                print(f"   (Related to: {preset_topic.replace('_', ' ').title()})")
+            
+            # Update conversation state
+            conversation_state = self.ai_conversation_handler.update_conversation_state(
+                conversation_state, player_input, analysis["npc_response"], 
+                analysis["similarity_score"], analysis["is_essential"]
+            )
+            
+        else:  # dynamic
+            # Generate dynamic response
+            dynamic_response = self.ai_conversation_handler.generate_dynamic_response(
+                player_input, npc, conversation_state, analysis["is_essential"]
+            )
+            
+            print(f"💬 {npc.name}: {dynamic_response}")
+            
+            # Update conversation state
+            conversation_state = self.ai_conversation_handler.update_conversation_state(
+                conversation_state, player_input, dynamic_response, 
+                analysis["similarity_score"], analysis["is_essential"]
+            )
+            
+            # Create conversation node if essential
+            if analysis["is_essential"]:
+                conversation_node = self.ai_conversation_handler.create_conversation_node(
+                    player_input, dynamic_response, True, npc
+                )
+                npc.conversation_nodes.append(conversation_node)
+        
+        # Update game state
         if self.game_state:
-            if npc_id not in self.game_state.conversation_history:
-                self.game_state.conversation_history[npc_id] = []
-            self.game_state.conversation_history[npc_id].append(f"Talked at {datetime.now().isoformat()}")
+            self.game_state.conversation_states[npc_id] = conversation_state
+            self.game_state.save_to_file()
+        
+        return True
+    
+    def _is_invalid_conversation_input(self, player_input: str) -> bool:
+        """Check if the input should be ignored as a user mistake."""
+        if not player_input:
+            return True
+        
+        # Remove extra whitespace and check length
+        cleaned_input = player_input.strip()
+        if len(cleaned_input) < 3:
+            return True
+        
+        # Check if it's just a single word (no spaces)
+        if ' ' not in cleaned_input:
+            return True
+        
+        # Check if it's just a number
+        if cleaned_input.isdigit():
+            return True
+        
+        # Check if it's just punctuation or very short
+        if len(cleaned_input) < 5 and not any(c.isalpha() for c in cleaned_input):
+            return True
+        
+        return False
+    
+    def _match_preset_topic(self, player_input: str, npc: NPC) -> Optional[str]:
+        """Match player input to a pre-set topic."""
+        topics = npc.dialogue_tree.get('topics', [])
+        player_input_lower = player_input.lower().strip()
+        
+        # Check for exact topic name match
+        for topic in topics:
+            if topic.lower() == player_input_lower:
+                return topic
+        
+        # Check for topic name with spaces
+        for topic in topics:
+            topic_name = topic.replace('_', ' ').lower()
+            if topic_name == player_input_lower:
+                return topic
+        
+        # Check for number input
+        try:
+            topic_index = int(player_input_lower) - 1
+            if 0 <= topic_index < len(topics):
+                return topics[topic_index]
+        except ValueError:
+            pass
+        
+        return None
+    
+    def _handle_preset_topic(self, npc: NPC, topic: str, conversation_state: ConversationState) -> bool:
+        """Handle a pre-set topic conversation."""
+        # Get conversation starter and response
+        conversation_starters = npc.dialogue_tree.get('conversation_starters', {})
+        responses = npc.dialogue_tree.get('responses', {})
+        
+        starter = conversation_starters.get(topic, f"Tell me about {topic.replace('_', ' ')}!")
+        response = responses.get(topic, "I'm not sure about that.")
+        
+        # Show the conversation
+        print(f"💬 You ask {npc.name}: \"{starter}\"")
+        print(f"💬 {npc.name}: {response}")
+        
+        # Update conversation state
+        conversation_state = self.ai_conversation_handler.update_conversation_state(
+            conversation_state, starter, response, 1.0, False  # High similarity, not essential
+        )
+        
+        # Update game state
+        if self.game_state:
+            self.game_state.conversation_states[npc.id] = conversation_state
             self.game_state.save_to_file()
         
         return True
@@ -842,212 +1026,312 @@ class GameEngine:
         self._update_game_state()
         return True
 
-    def execute_dynamic_action(self, action_id: str) -> bool:
-        """Execute a dynamic action from the game state"""
-        if not self.game_state or action_id not in self.game_state.ai_generated_actions:
-            print(f"Action {action_id} not found!")
-            return False
+    def create_new_data(self, user_input: str, data_type: str, game_state: Dict[str, Any]) -> bool:
+        """
+        Create new data using AI with tool use for specific types.
+        Returns True if successful, False otherwise.
+        """
+        if not hasattr(self, 'ai_handler'):
+            from ai_actions import AIActionHandler
+            self.ai_handler = AIActionHandler()
         
-        action = self.game_state.ai_generated_actions[action_id]
-        player = self.get_player()
-        
-        # Execute the action
-        success, message = action.execute(player, self.game_state)
-        
-        if success:
-            print(f"✅ {message}")
+        try:
+            print(f"   🤖 Using AI to create new {data_type}...")
+            
+            # Create the data creation message
+            message = get_data_creation_message(user_input, data_type, game_state)
+            
+            # Call OpenAI with tool calling for the specific data type
+            response = self.ai_handler.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": message},
+                    {"role": "user", "content": f"Create new {data_type} for: {user_input}"}
+                ],
+                tools=[tool for tool in AVAILABLE_TOOLS if tool["function"]["name"] == f"create_{data_type}"],
+                tool_choice={"type": "function", "function": {"name": f"create_{data_type}"}},
+                temperature=0.7
+            )
+            
+            # Extract tool call response
+            tool_call = response.choices[0].message.tool_calls[0]
+            new_data = json.loads(tool_call.function.arguments)
+            
+            # Add the new data to the game state
+            if data_type == "location":
+                self.locations[new_data["id"]] = new_data
+                print(f"   📍 Created new location: {new_data['name']}")
+            elif data_type == "quest":
+                self.quests[new_data["id"]] = new_data
+                print(f"   🎯 Created new quest: {new_data['name']}")
+            elif data_type == "item":
+                self.items[new_data["id"]] = new_data
+                print(f"   🗡️  Created new item: {new_data['name']}")
+            elif data_type == "npc":
+                self.npcs[new_data["id"]] = new_data
+                print(f"   👤 Created new NPC: {new_data['name']}")
+            elif data_type == "blueprint":
+                self.blueprints[new_data["id"]] = new_data
+                print(f"   📋 Created new blueprint: {new_data['name']}")
             
             # Update game state
             self._update_game_state()
             
-            # Generate image if enabled
-            if self.images_enabled:
-                generate_game_images(self.__dict__, "dynamic_action", action=action)
-            
             return True
-        else:
-            print(f"❌ {message}")
-            return False
-    
-    def show_dynamic_actions(self):
-        """Display all available AI-generated actions"""
-        if not self.game_state:
-            print("No game state available.")
-            return
-        
-        available_actions = self.game_state.get_available_ai_actions(self.get_player())
-        
-        if not available_actions:
-            print("No AI-generated actions available.")
-            return
-        
-        print("\n" + "="*50)
-        print("🤖 AI-GENERATED ACTIONS")
-        print("="*50)
-        
-        for action in available_actions:
-            print(f"   • {action.name}")
-            print(f"     {action.description}")
-            print(f"     Type: {action.action_type}")
             
-            if action.cost:
-                costs = [f"{amount} {resource}" for resource, amount in action.cost.items()]
-                print(f"     Cost: {', '.join(costs)}")
-            
-            if action.requirements:
-                reqs = []
-                for req_type, req_value in action.requirements.items():
-                    if req_type == "level":
-                        reqs.append(f"Level {req_value}")
-                    elif req_type == "items":
-                        reqs.append(f"Items: {', '.join(req_value)}")
-                    elif req_type == "skills":
-                        reqs.append(f"Skills: {', '.join(req_value)}")
-                    elif req_type == "location":
-                        reqs.append(f"Location: {req_value}")
-                if reqs:
-                    print(f"     Requirements: {', '.join(reqs)}")
-            
-            print(f"     Command: execute {action.id}")
-            print()
-        
-        print("="*50)
-    
-    def create_dynamic_action(self, user_input: str) -> bool:
-        """Create a new dynamic action using AI"""
-        if not self.game_state:
-            print("No game state available.")
-            return False
-        
-        print("🤖 Creating a new dynamic action...")
-        
-        # Prepare game state for AI
-        game_state_dict = {
-            "player_location": self.current_location,
-            "player_health": self.get_player().stats.health,
-            "player_mana": self.get_player().stats.mana,
-            "player_gold": self.get_player().gold,
-            "player_level": self.get_player().stats.level,
-            "active_quests": self.get_player().quests_in_progress,
-            "inventory": self.get_player().inventory
-        }
-        
-        # Create the action
-        action = ai_handler.create_dynamic_action(user_input, game_state_dict)
-        
-        if action:
-            # Add to game state
-            self.game_state.add_ai_action(action)
-            
-            print(f"✅ Created new action: {action.name}")
-            print(f"   {action.description}")
-            print(f"   Command: execute {action.id}")
-            
-            return True
-        else:
-            print("❌ Failed to create dynamic action.")
+        except Exception as e:
+            print(f"   ❌ Error creating new {data_type}: {e}")
             return False
 
-    def execute_suggested_action(self, suggested_action: str, original_command: List[str]) -> bool:
+    def execute_immediate_action(self, user_input: str, game_state: Dict[str, Any]) -> bool:
         """
-        Execute a suggested action from the AI strategy decision.
-        Returns True if the action was successfully executed, False otherwise.
+        Execute an immediate action without creating or modifying data.
+        Returns True if successful, False otherwise.
         """
-        if not suggested_action:
-            return False
-        
-        # Parse the suggested action
-        suggested_parts = suggested_action.split()
-        if not suggested_parts:
-            return False
-        
-        suggested_cmd = suggested_parts[0].lower()
+        if not hasattr(self, 'ai_handler'):
+            from ai_actions import AIActionHandler
+            self.ai_handler = AIActionHandler()
         
         try:
-            # Handle different types of suggested actions
-            if suggested_cmd == "status":
-                self.show_status()
-                return True
-            elif suggested_cmd == "inventory":
-                self.show_inventory()
-                return True
-            elif suggested_cmd == "skillbook":
-                self.show_skillbook()
-                return True
-            elif suggested_cmd == "available_quests":
-                self.show_available_quests()
-                return True
-            elif suggested_cmd == "map":
-                self.show_map()
-                return True
-            elif suggested_cmd == "npcs":
-                self.show_npcs()
-                return True
-            elif suggested_cmd == "shop":
-                self.show_shop()
-                return True
-            elif suggested_cmd == "dynamic_actions":
-                self.show_dynamic_actions()
-                return True
-            elif suggested_cmd == "move":
-                # Use the original command's location parameter
-                if len(original_command) > 1:
-                    location = original_command[1]
-                    return self.move_to_location(location)
-                else:
-                    print("❌ Move command requires a location parameter.")
-                    return False
-            elif suggested_cmd == "use":
-                # Use the original command's skill parameter
-                if len(original_command) > 1:
-                    skill = original_command[1]
-                    return self.use_skill(skill)
-                else:
-                    print("❌ Use command requires a skill parameter.")
-                    return False
-            elif suggested_cmd == "travel":
-                # Use the original command's location parameter
-                if len(original_command) > 1:
-                    location = original_command[1]
-                    return self.travel_to_location(location)
-                else:
-                    print("❌ Travel command requires a location parameter.")
-                    return False
-            elif suggested_cmd == "buy":
-                # Use the original command's item parameter
-                if len(original_command) > 1:
-                    item_id = original_command[1]
-                    return self.buy_item(item_id)
-                else:
-                    print("❌ Buy command requires an item parameter.")
-                    return False
-            elif suggested_cmd == "talk":
-                # Use the original command's NPC parameter
-                if len(original_command) > 1:
-                    npc_id = original_command[1]
-                    return self.talk_to_npc(npc_id)
-                else:
-                    print("❌ Talk command requires an NPC parameter.")
-                    return False
-            elif suggested_cmd == "start":
-                # Use the original command's quest parameter
-                if len(original_command) > 1:
-                    quest = original_command[1]
-                    return self.start_quest(quest)
-                else:
-                    print("❌ Start command requires a quest parameter.")
-                    return False
-            else:
-                print(f"❌ Unknown suggested action: {suggested_action}")
-                return False
-                
+            print(f"   🤖 Using AI to execute immediate action...")
+            
+            # Create the immediate action message
+            message = get_immediate_action_message(user_input, game_state)
+            
+            # Call OpenAI with tool calling for immediate action
+            response = self.ai_handler.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": message},
+                    {"role": "user", "content": f"Execute immediate action: {user_input}"}
+                ],
+                tools=[tool for tool in AVAILABLE_TOOLS if tool["function"]["name"] == "execute_immediate_action"],
+                tool_choice={"type": "function", "function": {"name": "execute_immediate_action"}},
+                temperature=0.8
+            )
+            
+            # Extract tool call response
+            tool_call = response.choices[0].message.tool_calls[0]
+            action_result = json.loads(tool_call.function.arguments)
+            
+            # Display the result
+            print(f"   {action_result['message']}")
+            
+            # Apply any immediate effects
+            if action_result.get('effects'):
+                self._apply_immediate_effects(action_result['effects'])
+            
+            return True
+            
         except Exception as e:
-            print(f"❌ Error executing suggested action: {e}")
+            print(f"   ❌ Error executing immediate action: {e}")
+            return False
+
+    def _apply_immediate_effects(self, effects: Dict[str, Any]):
+        """Apply immediate effects from an action to the player."""
+        player = self.get_player()
+        
+        if 'health_change' in effects:
+            player.stats.health = max(0, min(100, player.stats.health + effects['health_change']))
+            print(f"   💚 Health changed by {effects['health_change']}")
+        
+        if 'mana_change' in effects:
+            player.stats.mana = max(0, min(50, player.stats.mana + effects['mana_change']))
+            print(f"   🔮 Mana changed by {effects['mana_change']}")
+        
+        if 'gold_change' in effects:
+            player.gold = max(0, player.gold + effects['gold_change'])
+            print(f"   🪙 Gold changed by {effects['gold_change']}")
+        
+        if 'experience_change' in effects:
+            player.stats.experience += effects['experience_change']
+            print(f"   ⭐ Experience gained: {effects['experience_change']}")
+            
+            # Check for level up
+            if player.stats.experience >= player.stats.experience_to_next_level:
+                self.level_up_player()
+
+    def modify_existing_data(self, user_input: str, data_type: str, game_state: Dict[str, Any]) -> bool:
+        """
+        Modify existing data using AI with comprehensive context.
+        Returns True if successful, False otherwise.
+        """
+        if not hasattr(self, 'ai_handler'):
+            from ai_actions import AIActionHandler
+            self.ai_handler = AIActionHandler()
+        
+        try:
+            print(f"   🤖 Using AI to modify existing {data_type} data...")
+            
+            # Gather comprehensive context
+            comprehensive_context = self.gather_comprehensive_context(game_state)
+            
+            # Create the modification message
+            message = get_data_modification_message(user_input, data_type, comprehensive_context, game_state)
+            
+            # Call OpenAI with tool calling for data modification
+            response = self.ai_handler.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": message},
+                    {"role": "user", "content": f"Modify {data_type} data based on: {user_input}"}
+                ],
+                tools=[tool for tool in AVAILABLE_TOOLS if tool["function"]["name"] == f"modify_{data_type}"],
+                tool_choice={"type": "function", "function": {"name": f"modify_{data_type}"}},
+                temperature=0.3
+            )
+            
+            # Extract tool call response
+            tool_call = response.choices[0].message.tool_calls[0]
+            modification_data = json.loads(tool_call.function.arguments)
+            
+            # Apply the modifications
+            success = self._apply_data_modifications(data_type, modification_data, user_input)
+            
+            if success:
+                print(f"   ✅ Successfully modified {data_type} data")
+                # Update game state
+                self._update_game_state()
+            else:
+                print(f"   ❌ Failed to modify {data_type} data")
+            
+            return success
+            
+        except Exception as e:
+            print(f"   ❌ Error modifying {data_type} data: {e}")
+            return False
+
+    def _apply_data_modifications(self, data_type: str, modification_data: Dict[str, Any], user_input: str) -> bool:
+        """Apply modifications to the specified data type with balance validation and change tracking."""
+        try:
+            target_id = modification_data.get("target_id")
+            modifications = modification_data.get("modifications", {})
+            reasoning = modification_data.get("reasoning", "")
+            
+            # Validate game balance
+            is_valid, reason, filtered_modifications = self.validate_game_balance(data_type, target_id, modifications, user_input)
+            if not is_valid:
+                print(f"   ❌ Balance validation failed: {reason}")
+                return False
+            
+            if not filtered_modifications:
+                print(f"   ❌ No valid modifications after balance validation")
+                return False
+            
+            # Apply modifications and track changes
+            changes_made = False
+            
+            if data_type == "location":
+                if target_id in self.locations:
+                    location = self.locations[target_id]
+                    for field, value in filtered_modifications.items():
+                        if hasattr(location, field):
+                            old_value = getattr(location, field)
+                            setattr(location, field, value)
+                            # Track the change
+                            self.game_state.change_tracker.add_change(
+                                data_type, target_id, field, old_value, value, user_input, reasoning
+                            )
+                            changes_made = True
+                    
+            elif data_type == "quest":
+                if target_id in self.quests:
+                    quest = self.quests[target_id]
+                    for field, value in filtered_modifications.items():
+                        if hasattr(quest, field):
+                            old_value = getattr(quest, field)
+                            setattr(quest, field, value)
+                            # Track the change
+                            self.game_state.change_tracker.add_change(
+                                data_type, target_id, field, old_value, value, user_input, reasoning
+                            )
+                            changes_made = True
+                    
+            elif data_type == "item":
+                if target_id in self.items:
+                    item = self.items[target_id]
+                    for field, value in filtered_modifications.items():
+                        if field == "_consequence":
+                            # Handle consequences
+                            consequence = value
+                            print(f"   ⚠️  Consequence: {consequence['description']}")
+                            # Store consequence in game state for future reference
+                            if "item_consequences" not in self.game_state.temporary_effects:
+                                self.game_state.temporary_effects["item_consequences"] = {}
+                            self.game_state.temporary_effects["item_consequences"][target_id] = consequence
+                            continue
+                        
+                        if hasattr(item, field):
+                            old_value = getattr(item, field)
+                            setattr(item, field, value)
+                            # Track the change
+                            self.game_state.change_tracker.add_change(
+                                data_type, target_id, field, old_value, value, user_input, reasoning
+                            )
+                            changes_made = True
+                    
+            elif data_type == "npc":
+                if target_id in self.npcs:
+                    npc = self.npcs[target_id]
+                    for field, value in filtered_modifications.items():
+                        if hasattr(npc, field):
+                            old_value = getattr(npc, field)
+                            setattr(npc, field, value)
+                            # Track the change
+                            self.game_state.change_tracker.add_change(
+                                data_type, target_id, field, old_value, value, user_input, reasoning
+                            )
+                            changes_made = True
+                    
+            elif data_type == "skill":
+                if target_id in self.skills:
+                    skill = self.skills[target_id]
+                    for field, value in filtered_modifications.items():
+                        if field == "_consequence":
+                            # Handle consequences
+                            consequence = value
+                            print(f"   ⚠️  Consequence: {consequence['description']}")
+                            # Store consequence in game state for future reference
+                            if "skill_consequences" not in self.game_state.temporary_effects:
+                                self.game_state.temporary_effects["skill_consequences"] = {}
+                            self.game_state.temporary_effects["skill_consequences"][target_id] = consequence
+                            continue
+                        
+                        if hasattr(skill, field):
+                            old_value = getattr(skill, field)
+                            setattr(skill, field, value)
+                            # Track the change
+                            self.game_state.change_tracker.add_change(
+                                data_type, target_id, field, old_value, value, user_input, reasoning
+                            )
+                            changes_made = True
+                    
+            elif data_type == "blueprint":
+                if target_id in self.blueprints:
+                    blueprint = self.blueprints[target_id]
+                    for field, value in filtered_modifications.items():
+                        if hasattr(blueprint, field):
+                            old_value = getattr(blueprint, field)
+                            setattr(blueprint, field, value)
+                            # Track the change
+                            self.game_state.change_tracker.add_change(
+                                data_type, target_id, field, old_value, value, user_input, reasoning
+                            )
+                            changes_made = True
+            
+            if not changes_made:
+                print(f"   ❌ Target {data_type} with ID '{target_id}' not found")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            print(f"   ❌ Error applying modifications: {e}")
             return False
 
     def get_available_actions(self):
         """Return a list of available actions for the player at the current location."""
-        actions = ["status", "inventory", "skillbook", "available_quests", "map", "npcs", "dynamic_actions"]
+        actions = ["status", "inventory", "skillbook", "available_quests", "map", "npcs"]
         
         # Add shop command if current location has a shop
         current_loc = self.get_current_location()
@@ -1077,9 +1361,10 @@ class GameEngine:
         if hasattr(current_loc, 'shop_items') and current_loc.shop_items:
             actions.append("buy <item_id>")
         
-        # Add talk command if NPCs are present
+        # Add talk and ask commands if NPCs are present
         if current_loc.npcs:
             actions.append("talk <npc_id>")
+            actions.append("ask <npc_id> <question>")
         
         return actions
 
@@ -1088,6 +1373,671 @@ class GameEngine:
         print("\nAvailable actions:")
         for act in actions:
             print(f"- {act}")
+
+    def gather_comprehensive_context(self, game_state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Gather comprehensive context including all game data and player state.
+        This provides the AI with complete information for making modification decisions.
+        """
+        player = self.get_player()
+        current_location = self.get_current_location()
+        
+        context = {
+            "player_state": {
+                "location": self.current_location,
+                "health": player.stats.health,
+                "mana": player.stats.mana,
+                "gold": player.gold,
+                "level": player.stats.level,
+                "experience": player.stats.experience,
+                "inventory": player.inventory,
+                "equipped_items": player.inventory,  # For now, all inventory is equipped
+                "skills": player.skills,
+                "active_quests": player.quests_in_progress,
+                "completed_quests": self.game_state.completed_quests if self.game_state else [],
+                "npc_relationships": self.game_state.npc_relationships if self.game_state else {},
+                "discovered_locations": self.game_state.discovered_locations if self.game_state else []
+            },
+            
+            "current_location": {
+                "id": current_location.id if current_location else None,
+                "name": current_location.name if current_location else None,
+                "description": current_location.description if current_location else None,
+                "scene": current_location.scene if current_location else None,
+                "npcs": current_location.npcs if current_location else [],
+                "sub_locations": current_location.sub_locations if current_location else [],
+                "shop_items": current_location.shop_items if current_location else [],
+                "entities_within": current_location.entities_within if current_location else []
+            },
+            
+            "all_locations": {
+                loc_id: {
+                    "id": loc.id,
+                    "name": loc.name,
+                    "description": loc.description,
+                    "scene": loc.scene,
+                    "npcs": loc.npcs,
+                    "sub_locations": loc.sub_locations,
+                    "shop_items": loc.shop_items,
+                    "entities_within": loc.entities_within,
+                    "requirements": getattr(loc, 'requirements', {})
+                }
+                for loc_id, loc in self.locations.items()
+            },
+            
+            "all_items": {
+                item_id: {
+                    "id": item.id,
+                    "name": item.name,
+                    "description": item.description,
+                    "cost": item.cost,
+                    "rarity": item.rarity.value if hasattr(item.rarity, 'value') else str(item.rarity),
+                    "weight": item.weight,
+                    "skill": item.skill.id if item.skill else None,
+                    "effects": getattr(item, 'effects', {}),
+                    "requirements": getattr(item, 'requirements', {})
+                }
+                for item_id, item in self.items.items()
+            },
+            
+            "all_skills": {
+                skill_id: {
+                    "id": skill.id,
+                    "name": skill.name,
+                    "description": skill.description,
+                    "skill_type": skill.skill_type.value if hasattr(skill.skill_type, 'value') else str(skill.skill_type),
+                    "target": skill.target.value if hasattr(skill.target, 'value') else str(skill.target),
+                    "range": skill.range,
+                    "area_of_effect": skill.area_of_effect,
+                    "cost": skill.cost
+                }
+                for skill_id, skill in self.skills.items()
+            },
+            
+            "all_quests": {
+                quest_id: {
+                    "id": quest.id,
+                    "name": quest.name,
+                    "description": quest.description,
+                    "level": quest.level,
+                    "objectives": [obj.description for obj in getattr(quest, 'objectives', [])],
+                    "reward": getattr(quest, 'reward', {}),
+                    "status": quest.status.value if hasattr(quest.status, 'value') else str(quest.status),
+                    "location_id": getattr(quest, 'location_id', None)
+                }
+                for quest_id, quest in self.quests.items()
+            },
+            
+            "all_npcs": {
+                npc_id: {
+                    "id": npc.id,
+                    "name": npc.name,
+                    "description": npc.description,
+                    "personality": npc.personality,
+                    "location_id": npc.location_id,
+                    "level": npc.level,
+                    "conversation_id": npc.conversation_id,
+                    "quests_offered": npc.quests_offered,
+                    "shop_items": npc.shop_items,
+                    "dialogue_tree": npc.dialogue_tree,
+                    "bio": npc.bio,
+                    "conversation_nodes": [node.topic for node in getattr(npc, 'conversation_nodes', [])],
+                    "temperament": npc.temperament,
+                    "max_daily_questions": npc.max_daily_questions
+                }
+                for npc_id, npc in self.npcs.items()
+            },
+            
+            "all_blueprints": {
+                blueprint_id: {
+                    "id": blueprint.id,
+                    "name": blueprint.name,
+                    "resulting_item": blueprint.resulting_item,
+                    "required_items": blueprint.required_items,
+                    "required_skills": blueprint.required_skills,
+                    "location_needed": blueprint.location_needed
+                }
+                for blueprint_id, blueprint in self.blueprints.items()
+            },
+            
+            "game_state": {
+                "session_id": self.game_state.session_id if self.game_state else None,
+                "timestamp": self.game_state.timestamp if self.game_state else None,
+                "world_events": self.game_state.world_events if self.game_state else [],
+                "temporary_effects": self.game_state.temporary_effects if self.game_state else {},
+                "conversation_history": self.game_state.conversation_history if self.game_state else {}
+            }
+        }
+        
+        return context
+
+    def validate_game_balance(self, data_type: str, target_id: str, modifications: Dict[str, Any], user_input: str) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Validate that modifications don't break game balance.
+        Returns (is_valid, reason, filtered_modifications)
+        """
+        if data_type == "item":
+            return self._validate_item_balance(target_id, modifications, user_input)
+        elif data_type == "skill":
+            return self._validate_skill_balance(target_id, modifications, user_input)
+        elif data_type == "quest":
+            return self._validate_quest_balance(target_id, modifications, user_input)
+        elif data_type == "location":
+            return self._validate_location_balance(target_id, modifications, user_input)
+        elif data_type == "npc":
+            return self._validate_npc_balance(target_id, modifications, user_input)
+        else:
+            return True, "No balance validation for this data type", modifications
+
+    def _validate_item_balance(self, target_id: str, modifications: Dict[str, Any], user_input: str) -> Tuple[bool, str, Dict[str, Any]]:
+        """Validate item modifications for game balance with ingenuity rewards"""
+        if target_id not in self.items:
+            return False, f"Item {target_id} not found", {}
+        
+        item = self.items[target_id]
+        filtered_modifications = {}
+        
+        # Check if player owns this item
+        player = self.get_player()
+        if target_id not in player.inventory:
+            return False, f"You don't own the item {item.name}", {}
+        
+        # Analyze the user input for ingenuity and creativity
+        ingenuity_score = self._calculate_ingenuity_score(user_input, modifications)
+        
+        # Allow cosmetic changes that don't affect power
+        allowed_cosmetic_fields = ["description", "name"]
+        for field, value in modifications.items():
+            if field in allowed_cosmetic_fields:
+                filtered_modifications[field] = value
+                continue
+            
+            # Block direct power-affecting changes
+            if field in ["cost", "rarity"]:
+                return False, f"Cannot modify {field} - this would affect game balance", {}
+            
+            # Allow ingenious modifications with consequences
+            if field == "description":
+                # Check for ingenious modifications
+                if self._is_ingenious_modification(user_input, value, ingenuity_score):
+                    # Allow the modification but add consequences
+                    consequence = self._generate_consequence(user_input, item, modifications)
+                    if consequence:
+                        filtered_modifications[field] = value
+                        filtered_modifications["_consequence"] = consequence
+                        continue
+                
+                # Check if the modification is trying to add magical properties
+                if any(word in str(value).lower() for word in ["magic", "enchanted", "powerful", "legendary", "epic"]):
+                    return False, "Cannot add magical properties to items through description changes", {}
+                
+                # Allow regular cosmetic changes
+                filtered_modifications[field] = value
+        
+        if not filtered_modifications:
+            return False, "No valid modifications found. Consider cosmetic changes like description or name, or try more creative modifications with realistic consequences.", {}
+        
+        return True, "Valid modifications", filtered_modifications
+
+    def _calculate_ingenuity_score(self, user_input: str, modifications: Dict[str, Any]) -> float:
+        """Calculate how ingenious and creative the modification is"""
+        score = 0.0
+        
+        # Check for creative use scenarios
+        creative_scenarios = [
+            "using", "using the", "with the", "to cut", "to carve", "to dig", "to pry",
+            "breaking", "damaging", "wearing out", "dulling", "chipped", "cracked",
+            "repurposing", "modifying", "altering", "customizing", "personalizing"
+        ]
+        
+        input_lower = user_input.lower()
+        for scenario in creative_scenarios:
+            if scenario in input_lower:
+                score += 0.2
+        
+        # Check for realistic consequences
+        consequence_words = [
+            "break", "damage", "wear", "dull", "chip", "crack", "rust", "bend",
+            "lose", "drop", "misplace", "forget", "leave behind"
+        ]
+        
+        for word in consequence_words:
+            if word in input_lower:
+                score += 0.3
+        
+        # Check for detailed reasoning
+        if len(user_input) > 50:
+            score += 0.1
+        
+        # Check for specific context
+        if any(word in input_lower for word in ["because", "since", "after", "while", "during"]):
+            score += 0.2
+        
+        return min(score, 1.0)
+
+    def _is_ingenious_modification(self, user_input: str, new_value: str, ingenuity_score: float) -> bool:
+        """Determine if a modification is ingenious enough to allow"""
+        input_lower = user_input.lower()
+        value_lower = str(new_value).lower()
+        
+        # High ingenuity scenarios that should be allowed
+        ingenious_patterns = [
+            # Using items for unintended purposes
+            ("using", "to cut", "food"),  # Using sword to cut food
+            ("using", "to carve", "wood"),  # Using sword to carve
+            ("using", "to dig", "hole"),  # Using sword to dig
+            ("using", "to pry", "open"),  # Using sword to pry
+            ("breaking", "while", "using"),  # Breaking during use
+            ("damaging", "during", "battle"),  # Damaging in combat
+            ("wearing out", "from", "use"),  # Wearing out from use
+            ("losing", "while", "traveling"),  # Losing while traveling
+            ("dropping", "in", "water"),  # Dropping in water
+            ("rusting", "from", "moisture"),  # Rusting from moisture
+        ]
+        
+        for pattern in ingenious_patterns:
+            if all(word in input_lower for word in pattern):
+                return True
+        
+        # Check for creative repurposing
+        if ingenuity_score >= 0.6:
+            return True
+        
+        return False
+
+    def _generate_consequence(self, user_input: str, item, modifications: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate realistic consequences for ingenious modifications"""
+        input_lower = user_input.lower()
+        
+        # Consequences based on the type of modification
+        if any(word in input_lower for word in ["break", "damage", "crack", "chip"]):
+            return {
+                "type": "damage",
+                "description": f"The {item.name} shows signs of wear and damage from your creative use.",
+                "effect": "item_damaged",
+                "severity": "minor"
+            }
+        
+        elif any(word in input_lower for word in ["dull", "wearing out", "blunt"]):
+            return {
+                "type": "deterioration",
+                "description": f"The {item.name} has become dulled from overuse.",
+                "effect": "item_dulled",
+                "severity": "minor"
+            }
+        
+        elif any(word in input_lower for word in ["rust", "corrode", "water"]):
+            return {
+                "type": "corrosion",
+                "description": f"The {item.name} has developed rust spots from exposure to moisture.",
+                "effect": "item_rusted",
+                "severity": "minor"
+            }
+        
+        elif any(word in input_lower for word in ["lose", "drop", "misplace"]):
+            return {
+                "type": "loss",
+                "description": f"You realize the {item.name} is missing - perhaps lost during your adventures.",
+                "effect": "item_lost",
+                "severity": "major"
+            }
+        
+        elif any(word in input_lower for word in ["bend", "warp", "deform"]):
+            return {
+                "type": "deformation",
+                "description": f"The {item.name} has been bent out of shape from improper use.",
+                "effect": "item_bent",
+                "severity": "moderate"
+            }
+        
+        # Default consequence for creative use
+        return {
+            "type": "wear",
+            "description": f"The {item.name} shows signs of creative use and wear.",
+            "effect": "item_worn",
+            "severity": "minor"
+        }
+
+    def _validate_skill_balance(self, target_id: str, modifications: Dict[str, Any], user_input: str) -> Tuple[bool, str, Dict[str, Any]]:
+        """Validate skill modifications for game balance with ingenuity rewards"""
+        if target_id not in self.skills:
+            return False, f"Skill {target_id} not found", {}
+        
+        skill = self.skills[target_id]
+        filtered_modifications = {}
+        
+        # Check if player has this skill
+        player = self.get_player()
+        if target_id not in player.skills:
+            return False, f"You don't have the skill {skill.name}", {}
+        
+        # Analyze ingenuity for skill modifications
+        ingenuity_score = self._calculate_ingenuity_score(user_input, modifications)
+        
+        # Allow cosmetic changes
+        allowed_cosmetic_fields = ["description", "name"]
+        for field, value in modifications.items():
+            if field in allowed_cosmetic_fields:
+                filtered_modifications[field] = value
+                continue
+            
+            # Block direct power-affecting changes
+            if field in ["cost", "skill_type", "target", "range", "area_of_effect"]:
+                return False, f"Cannot modify {field} - this would affect game balance", {}
+        
+        # Allow ingenious skill modifications with consequences
+        if "description" in modifications and ingenuity_score >= 0.5:
+            # Check for creative skill use scenarios
+            if self._is_ingenious_skill_modification(user_input, modifications["description"]):
+                consequence = self._generate_skill_consequence(user_input, skill, modifications)
+                if consequence:
+                    filtered_modifications["description"] = modifications["description"]
+                    filtered_modifications["_consequence"] = consequence
+        
+        if not filtered_modifications:
+            return False, "No valid modifications found. Consider cosmetic changes like description or name, or try more creative skill modifications.", {}
+        
+        return True, "Valid modifications", filtered_modifications
+
+    def _is_ingenious_skill_modification(self, user_input: str, new_description: str) -> bool:
+        """Determine if a skill modification is ingenious enough to allow"""
+        input_lower = user_input.lower()
+        
+        # Ingenious skill use scenarios
+        ingenious_skill_patterns = [
+            ("overusing", "skill"),  # Overusing a skill
+            ("practicing", "too much"),  # Practicing too much
+            ("learning", "new technique"),  # Learning new technique
+            ("adapting", "skill"),  # Adapting skill for new use
+            ("forgetting", "how to"),  # Forgetting how to use
+            ("improving", "technique"),  # Improving technique
+            ("developing", "bad habit"),  # Developing bad habit
+        ]
+        
+        for pattern in ingenious_skill_patterns:
+            if all(word in input_lower for word in pattern):
+                return True
+        
+        return False
+
+    def _generate_skill_consequence(self, user_input: str, skill, modifications: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate realistic consequences for ingenious skill modifications"""
+        input_lower = user_input.lower()
+        
+        if any(word in input_lower for word in ["overusing", "too much", "exhaustion"]):
+            return {
+                "type": "exhaustion",
+                "description": f"Your {skill.name} has become exhausting from overuse.",
+                "effect": "skill_exhausted",
+                "severity": "minor"
+            }
+        
+        elif any(word in input_lower for word in ["forgetting", "losing", "rusty"]):
+            return {
+                "type": "rust",
+                "description": f"Your {skill.name} has become rusty from lack of practice.",
+                "effect": "skill_rusty",
+                "severity": "minor"
+            }
+        
+        elif any(word in input_lower for word in ["bad habit", "wrong way", "incorrect"]):
+            return {
+                "type": "bad_habit",
+                "description": f"You've developed a bad habit with your {skill.name} technique.",
+                "effect": "skill_bad_habit",
+                "severity": "minor"
+            }
+        
+        return {
+            "type": "development",
+            "description": f"Your {skill.name} has evolved through creative use.",
+            "effect": "skill_evolved",
+            "severity": "minor"
+        }
+
+    def _validate_quest_balance(self, target_id: str, modifications: Dict[str, Any], user_input: str) -> Tuple[bool, str, Dict[str, Any]]:
+        """Validate quest modifications for game balance"""
+        if target_id not in self.quests:
+            return False, f"Quest {target_id} not found", {}
+        
+        quest = self.quests[target_id]
+        filtered_modifications = {}
+        
+        # Check if player has this quest active
+        player = self.get_player()
+        if target_id not in player.quests_in_progress:
+            return False, f"You don't have the quest {quest.name} active", {}
+        
+        # Allow some quest modifications
+        allowed_fields = ["description", "name"]
+        for field, value in modifications.items():
+            if field in allowed_fields:
+                filtered_modifications[field] = value
+                continue
+            
+            # Block reward and objective changes
+            if field in ["reward", "objectives", "level"]:
+                return False, f"Cannot modify {field} - this would affect game balance", {}
+        
+        if not filtered_modifications:
+            return False, "No valid modifications found. Consider cosmetic changes like description or name.", {}
+        
+        return True, "Valid cosmetic modifications", filtered_modifications
+
+    def _validate_location_balance(self, target_id: str, modifications: Dict[str, Any], user_input: str) -> Tuple[bool, str, Dict[str, Any]]:
+        """Validate location modifications for game balance"""
+        if target_id not in self.locations:
+            return False, f"Location {target_id} not found", {}
+        
+        location = self.locations[target_id]
+        filtered_modifications = {}
+        
+        # Allow most location modifications as they're mostly cosmetic
+        allowed_fields = ["description", "name", "scene"]
+        for field, value in modifications.items():
+            if field in allowed_fields:
+                filtered_modifications[field] = value
+                continue
+            
+            # Block structural changes that could break game flow
+            if field in ["npcs", "sub_locations", "shop_items", "entities_within"]:
+                return False, f"Cannot modify {field} - this would affect game structure", {}
+        
+        if not filtered_modifications:
+            return False, "No valid modifications found. Consider cosmetic changes like description, name, or scene.", {}
+        
+        return True, "Valid cosmetic modifications", filtered_modifications
+
+    def _validate_npc_balance(self, target_id: str, modifications: Dict[str, Any], user_input: str) -> Tuple[bool, str, Dict[str, Any]]:
+        """Validate NPC modifications for game balance"""
+        if target_id not in self.npcs:
+            return False, f"NPC {target_id} not found", {}
+        
+        npc = self.npcs[target_id]
+        filtered_modifications = {}
+        
+        # Allow personality and description changes
+        allowed_fields = ["description", "personality", "bio", "name"]
+        for field, value in modifications.items():
+            if field in allowed_fields:
+                filtered_modifications[field] = value
+                continue
+            
+            # Block structural changes
+            if field in ["location_id", "level", "quests_offered", "shop_items"]:
+                return False, f"Cannot modify {field} - this would affect game structure", {}
+        
+        if not filtered_modifications:
+            return False, "No valid modifications found. Consider cosmetic changes like description, personality, or bio.", {}
+        
+        return True, "Valid cosmetic modifications", filtered_modifications
+
+    def get_change_history(self, data_type: str = None, target_id: str = None, hours: int = None) -> List[Dict[str, Any]]:
+        """Get change history with optional filtering"""
+        if not self.game_state:
+            return []
+        
+        if hours:
+            changes = self.game_state.change_tracker.get_recent_changes(hours)
+        else:
+            changes = self.game_state.change_tracker.get_changes_for(data_type, target_id)
+        
+        return [change.to_dict() for change in changes]
+    
+    def print_change_history(self, data_type: str = None, target_id: str = None, hours: int = None):
+        """Print change history in a readable format"""
+        changes = self.get_change_history(data_type, target_id, hours)
+        
+        if not changes:
+            print("📝 No changes found")
+            return
+        
+        print(f"📝 Change History ({len(changes)} changes):")
+        print("=" * 80)
+        
+        for change in changes:
+            timestamp = change['timestamp'][:19]  # Remove microseconds
+            print(f"🕒 {timestamp}")
+            print(f"   Type: {change['data_type']}")
+            print(f"   Target: {change['target_id']}")
+            print(f"   Field: {change['field_name']}")
+            print(f"   Old: {change['old_value']}")
+            print(f"   New: {change['new_value']}")
+            print(f"   User Input: '{change['user_input']}'")
+            print(f"   Reasoning: {change['reasoning']}")
+            print("-" * 40)
+    
+    def revert_last_change(self, data_type: str = None, target_id: str = None) -> bool:
+        """Revert the last change made to the specified data type/target"""
+        if not self.game_state:
+            return False
+        
+        changes = self.game_state.change_tracker.get_changes_for(data_type, target_id)
+        if not changes:
+            print("   ❌ No changes found to revert")
+            return False
+        
+        # Get the most recent change
+        latest_change = max(changes, key=lambda x: x.timestamp)
+        
+        try:
+            # Apply the reversion
+            if latest_change.data_type == "location" and latest_change.target_id in self.locations:
+                location = self.locations[latest_change.target_id]
+                setattr(location, latest_change.field_name, latest_change.old_value)
+            elif latest_change.data_type == "quest" and latest_change.target_id in self.quests:
+                quest = self.quests[latest_change.target_id]
+                setattr(quest, latest_change.field_name, latest_change.old_value)
+            elif latest_change.data_type == "item" and latest_change.target_id in self.items:
+                item = self.items[latest_change.target_id]
+                setattr(item, latest_change.field_name, latest_change.old_value)
+            elif latest_change.data_type == "npc" and latest_change.target_id in self.npcs:
+                npc = self.npcs[latest_change.target_id]
+                setattr(npc, latest_change.field_name, latest_change.old_value)
+            elif latest_change.data_type == "skill" and latest_change.target_id in self.skills:
+                skill = self.skills[latest_change.target_id]
+                setattr(skill, latest_change.field_name, latest_change.old_value)
+            elif latest_change.data_type == "blueprint" and latest_change.target_id in self.blueprints:
+                blueprint = self.blueprints[latest_change.target_id]
+                setattr(blueprint, latest_change.field_name, latest_change.old_value)
+            else:
+                print(f"   ❌ Cannot revert change for {latest_change.data_type} {latest_change.target_id}")
+                return False
+            
+            # Remove the change from history
+            self.game_state.change_tracker.changes.remove(latest_change)
+            
+            print(f"   ✅ Reverted change: {latest_change.field_name} on {latest_change.target_id}")
+            return True
+            
+        except Exception as e:
+            print(f"   ❌ Error reverting change: {e}")
+            return False
+
+    def get_active_consequences(self) -> Dict[str, Any]:
+        """Get all active consequences for items and skills"""
+        if not self.game_state:
+            return {}
+        
+        consequences = {}
+        
+        # Get item consequences
+        item_consequences = self.game_state.temporary_effects.get("item_consequences", {})
+        for item_id, consequence in item_consequences.items():
+            if item_id in self.items:
+                item_name = self.items[item_id].name
+                consequences[f"item_{item_id}"] = {
+                    "type": "item",
+                    "item_name": item_name,
+                    "consequence": consequence
+                }
+        
+        # Get skill consequences
+        skill_consequences = self.game_state.temporary_effects.get("skill_consequences", {})
+        for skill_id, consequence in skill_consequences.items():
+            if skill_id in self.skills:
+                skill_name = self.skills[skill_id].name
+                consequences[f"skill_{skill_id}"] = {
+                    "type": "skill",
+                    "skill_name": skill_name,
+                    "consequence": consequence
+                }
+        
+        return consequences
+    
+    def print_active_consequences(self):
+        """Print all active consequences in a readable format"""
+        consequences = self.get_active_consequences()
+        
+        if not consequences:
+            print("📋 No active consequences")
+            return
+        
+        print("📋 Active Consequences:")
+        print("=" * 50)
+        
+        for consequence_id, data in consequences.items():
+            if data["type"] == "item":
+                print(f"🗡️  {data['item_name']}: {data['consequence']['description']}")
+            elif data["type"] == "skill":
+                print(f"⚡ {data['skill_name']}: {data['consequence']['description']}")
+        
+        print("=" * 50)
+    
+    def clear_consequence(self, item_or_skill_id: str, consequence_type: str = "item"):
+        """Clear a specific consequence"""
+        if not self.game_state:
+            return False
+        
+        if consequence_type == "item":
+            item_consequences = self.game_state.temporary_effects.get("item_consequences", {})
+            if item_or_skill_id in item_consequences:
+                del item_consequences[item_or_skill_id]
+                print(f"   ✅ Cleared consequence for item {item_or_skill_id}")
+                return True
+        elif consequence_type == "skill":
+            skill_consequences = self.game_state.temporary_effects.get("skill_consequences", {})
+            if item_or_skill_id in skill_consequences:
+                del skill_consequences[item_or_skill_id]
+                print(f"   ✅ Cleared consequence for skill {item_or_skill_id}")
+                return True
+        
+        print(f"   ❌ No consequence found for {consequence_type} {item_or_skill_id}")
+        return False
+    
+    def clear_all_consequences(self):
+        """Clear all active consequences"""
+        if not self.game_state:
+            return False
+        
+        if "item_consequences" in self.game_state.temporary_effects:
+            del self.game_state.temporary_effects["item_consequences"]
+        
+        if "skill_consequences" in self.game_state.temporary_effects:
+            del self.game_state.temporary_effects["skill_consequences"]
+        
+        print("   ✅ Cleared all active consequences")
+        return True
 
 
 def main():
@@ -1152,18 +2102,18 @@ def main():
             elif cmd == "talk" and len(command) > 1:
                 npc_id = command[1]
                 game.talk_to_npc(npc_id)
-            elif cmd == "dynamic_actions":
-                game.show_dynamic_actions()
-            elif cmd == "execute" and len(command) > 1:
-                action_id = command[1]
-                game.execute_dynamic_action(action_id)
+            elif cmd == "ask" and len(command) > 2:
+                npc_id = command[1]
+                question = " ".join(command[2:])
+                game.talk_to_npc(npc_id, question)
             elif cmd == "quit":
                 if game.images_enabled:
                     image_gen.export_image_log()
                 print("Thanks for playing!")
                 break
             else:
-                # Use AI to decide the best strategy for handling this input
+                # Use AI to analyze and execute the action immediately
+                current_location = game.get_current_location()
                 game_state_dict = {
                     "player_location": game.current_location,
                     "player_health": game.get_player().stats.health,
@@ -1171,49 +2121,54 @@ def main():
                     "player_gold": game.get_player().gold,
                     "player_level": game.get_player().stats.level,
                     "active_quests": game.get_player().quests_in_progress,
-                    "inventory": game.get_player().inventory
+                    "inventory": game.get_player().inventory,
+                    "location_npcs": current_location.npcs if current_location else [],
+                    "location_description": current_location.description if current_location else "Unknown location"
                 }
                 
-                # Get AI strategy decision
-                strategy = ai_handler.decide_action_strategy(user_input, game_state_dict)
+                # Step 1: Check if player should be allowed to do this
+                print("🔒 Checking permissions...")
+                permission = ai_handler.check_player_permission(user_input, game_state_dict)
                 
-                print(f"🤖 Analysis: {strategy['reasoning']}")
-                print(f"   Confidence: {strategy['confidence']:.1%}")
+                if not permission['allowed']:
+                    print(f"❌ {permission['reasoning']}")
+                    if permission['restricted_effects']:
+                        print(f"   Restricted effects: {', '.join(permission['restricted_effects'])}")
+                    continue
                 
-                if strategy['strategy'] == 'existing' and strategy['suggested_action']:
-                    # Try to execute the suggested existing action
-                    suggested_cmd = strategy['suggested_action'].split()[0]
-                    print(f"🤖 Trying to execute: {strategy['suggested_action']}")
+                # Step 2: Determine if this should create new data or modify existing data
+                print("📊 Analyzing data requirements...")
+                data_action = ai_handler.determine_data_action(user_input, game_state_dict)
+                print(f"   Action type: {data_action['action_type']}")
+                print(f"   Data type: {data_action['data_type']}")
+                print(f"   Reasoning: {data_action['reasoning']}")
+                
+                # Step 3: Execute based on data action type
+                if data_action['action_type'] == 'create_new':
+                    print("🆕 Creating new data...")
+                    success = self.create_new_data(user_input, data_action['data_type'], game_state_dict)
+                    if success:
+                        print(f"✅ Successfully created new {data_action['data_type']} data")
+                    else:
+                        print(f"❌ Failed to create new {data_action['data_type']} data")
                     
-                    # Use the helper method to execute the suggested action
-                    if game.execute_suggested_action(strategy['suggested_action'], command):
-                        # Action was successful
-                        pass
+                elif data_action['action_type'] == 'modify_existing':
+                    print("✏️  Modifying existing data...")
+                    success = self.modify_existing_data(user_input, data_action['data_type'], game_state_dict)
+                    if success:
+                        print(f"✅ Successfully modified existing {data_action['data_type']} data")
                     else:
-                        # Action failed, try dynamic action if recommended
-                        if strategy['should_create_dynamic']:
-                            print("🤖 Creating a dynamic action instead...")
-                            if game.create_dynamic_action(user_input):
-                                print("💡 You can now use 'dynamic_actions' to see your custom actions!")
-                        else:
-                            print("Unknown or unavailable command. Type 'help' for available actions.")
+                        print(f"❌ Failed to modify existing {data_action['data_type']} data")
+                    
+                else:  # immediate action
+                    print("⚡ Executing immediate action...")
+                    success = self.execute_immediate_action(user_input, game_state_dict)
+                    if success:
+                        print("✅ Immediate action executed successfully")
+                    else:
+                        print("❌ Failed to execute immediate action")
                 
-                elif strategy['strategy'] == 'dynamic' or strategy['should_create_dynamic']:
-                    # Create a dynamic action
-                    print("🤖 Creating a custom action for you...")
-                    if game.create_dynamic_action(user_input):
-                        print("💡 You can now use 'dynamic_actions' to see your custom actions!")
-                    else:
-                        print("❌ Failed to create dynamic action.")
-                        print("Unknown or unavailable command. Type 'help' for available actions.")
-                
-                else:
-                    # Fallback for low confidence or unclear strategy
-                    print("🤖 I'm not sure what you want to do. Let me try creating a custom action...")
-                    if game.create_dynamic_action(user_input):
-                        print("💡 You can now use 'dynamic_actions' to see your custom actions!")
-                    else:
-                        print("Unknown or unavailable command. Type 'help' for available actions.")
+                print("✅ Action analysis completed")
         except KeyboardInterrupt:
             if game.images_enabled:
                 image_gen.export_image_log()
