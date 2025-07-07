@@ -1,4 +1,5 @@
-.env
+# Environment variables
+.env*
 .envrc
-__pycache__/
+.direnv/
 game_state.json
