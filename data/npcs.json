@@ -9,9 +9,18 @@
     "conversation_id": "tavern_keeper_chat",
     "quests_offered": [],
     "shop_items": ["health_potion", "mana_potion", "leather_armor", "fireball_scroll"],
+    "bio": "Old Tom has been running the Prancing Pony for over twenty years. He's seen countless adventurers pass through his doors, from fresh-faced newcomers to battle-scarred veterans. He knows everyone in town and has a story for every occasion. His warm demeanor and endless supply of local gossip make him a favorite among travelers. He's particularly fond of sharing tales of the old days and warning newcomers about the dangers lurking in the surrounding wilderness.",
+    "temperament": "friendly",
+    "max_daily_questions": 15,
     "dialogue_tree": {
       "greeting": "Welcome to the Prancing Pony! What can I do for you today?",
       "topics": ["local_rumors", "quests", "shop", "weather"],
+      "conversation_starters": {
+        "local_rumors": "Tell me about the local rumors!",
+        "quests": "What kind of work is available around here?",
+        "shop": "What do you have for sale?",
+        "weather": "How's the weather been lately?"
+      },
       "responses": {
         "local_rumors": "I've heard some strange noises coming from the forest lately. Some say it's goblins, others say it's something worse...",
         "quests": "Adventurers often find work here. Check the notice board or ask around!",
@@ -30,9 +39,18 @@
     "conversation_id": "quest_giver_chat",
     "quests_offered": ["goblin_hunt", "herb_collection"],
     "shop_items": [],
+    "bio": "Captain Marcus served in the royal army for fifteen years before retiring to this quiet village. His military experience and tactical mind make him the natural choice for coordinating local defense and quest assignments. He's seen his share of battles and knows the value of preparation and teamwork. Though he can be gruff with newcomers, he respects those who show courage and dedication. He's particularly concerned about the recent goblin incursions and takes his role in protecting the village very seriously.",
+    "temperament": "serious",
+    "max_daily_questions": 10,
     "dialogue_tree": {
       "greeting": "Ah, a new face. Looking for work, are you?",
       "topics": ["goblin_problem", "herb_shortage", "training", "reputation"],
+      "conversation_starters": {
+        "goblin_problem": "What's this about a goblin problem?",
+        "herb_shortage": "I heard there's a shortage of herbs. What's the situation?",
+        "training": "How should I train to become a better adventurer?",
+        "reputation": "How important is reputation around here?"
+      },
       "responses": {
         "goblin_problem": "Goblins have been raiding our farms. We need someone to deal with them.",
         "herb_shortage": "Our healer needs rare herbs from the forest clearing. Can you help?",
@@ -51,9 +69,18 @@
     "conversation_id": "blacksmith_chat",
     "quests_offered": [],
     "shop_items": ["iron_sword", "leather_armor", "magic_ring"],
+    "bio": "Greta Ironforge learned her craft from her father, who was the village blacksmith before her. She's been working the forge since she was old enough to hold a hammer, and her skill with metal is unmatched in the region. She takes great pride in her work and refuses to sell anything that doesn't meet her exacting standards. Though she can be blunt and businesslike, she has a soft spot for young adventurers and often gives them advice about equipment maintenance. She's particularly interested in rare materials and magical metals.",
+    "temperament": "practical",
+    "max_daily_questions": 8,
     "dialogue_tree": {
       "greeting": "Welcome to my forge. Need something crafted or repaired?",
       "topics": ["weapons", "armor", "crafting", "materials"],
+      "conversation_starters": {
+        "weapons": "What kind of weapons can you make?",
+        "armor": "How important is good armor really?",
+        "crafting": "What makes your crafting special?",
+        "materials": "What materials are you looking for?"
+      },
       "responses": {
         "weapons": "I can craft any weapon you need, given the right materials.",
         "armor": "Good armor can mean the difference between life and death.",
@@ -72,9 +99,18 @@
     "conversation_id": "merchant_chat",
     "quests_offered": [],
     "shop_items": ["magic_staff", "magic_ring", "dagger"],
+    "bio": "Sarah has been traveling the realm for nearly a decade, bringing exotic goods and fascinating stories from distant lands. She's visited every major city and many hidden villages, always on the lookout for unique items and interesting customers. Her charm and business acumen have made her one of the most successful traveling merchants in the region. She loves to haggle and considers it part of the fun of doing business. She's also a great source of information about distant lands and current events across the realm.",
+    "temperament": "charismatic",
+    "max_daily_questions": 12,
     "dialogue_tree": {
       "greeting": "Welcome! I have the finest goods from across the realm!",
       "topics": ["travels", "magic_items", "prices", "gossip"],
+      "conversation_starters": {
+        "travels": "Where have you traveled to?",
+        "magic_items": "What magic items do you have?",
+        "prices": "Are your prices negotiable?",
+        "gossip": "What's the latest gossip from your travels?"
+      },
       "responses": {
         "travels": "I've traveled far and wide. Every city has its secrets.",
         "magic_items": "Magic items are rare and expensive, but worth every coin.",
@@ -93,9 +129,18 @@
     "conversation_id": "hermit_chat",
     "quests_offered": ["lost_treasure"],
     "shop_items": [],
+    "bio": "Old Man Willow has lived in the forest clearing for as long as anyone can remember. Some say he was once a powerful wizard, others claim he's a nature spirit in human form. He speaks in riddles and cryptic phrases, but those who listen carefully often find wisdom in his words. He's deeply connected to the natural world and can sense things that others cannot. Though he appears frail, there's a strength about him that suggests he's seen and survived much in his long life. He's particularly interested in those who show respect for nature and the old ways.",
+    "temperament": "mysterious",
+    "max_daily_questions": 5,
     "dialogue_tree": {
       "greeting": "Ah, a seeker of knowledge. What brings you to my humble abode?",
       "topics": ["wisdom", "treasure", "forest_secrets", "prophecy"],
+      "conversation_starters": {
+        "wisdom": "What wisdom can you share with me?",
+        "treasure": "Are there treasures hidden in these woods?",
+        "forest_secrets": "What secrets does the forest hold?",
+        "prophecy": "Do you see anything in the future?"
+      },
       "responses": {
         "wisdom": "Wisdom comes not from age, but from experience. What have you learned?",
         "treasure": "There are treasures hidden in these woods, but they come with a price.",

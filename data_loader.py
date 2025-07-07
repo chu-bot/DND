@@ -1,7 +1,11 @@
 import json
 import os
 from typing import Dict, Any, List, Optional
-from game_types import *
+from game_types import (
+    SkillType, TargetType, Rarity, Objective, QuestStatus,
+    Skill, Item, Location, Blueprint, DialogueInstance,
+    Conversation, NPC, Quest
+)
 
 
 class DataLoader:
@@ -180,7 +184,10 @@ class DataLoader:
                     conversation_id=npc_info.get('conversation_id'),
                     quests_offered=npc_info.get('quests_offered', []),
                     shop_items=npc_info.get('shop_items', []),
-                    dialogue_tree=npc_info.get('dialogue_tree', {})
+                    dialogue_tree=npc_info.get('dialogue_tree', {}),
+                    bio=npc_info.get('bio', ''),
+                    temperament=npc_info.get('temperament', 'neutral'),
+                    max_daily_questions=npc_info.get('max_daily_questions', 10)
                 )
                 self.npcs[npc_id] = npc
                 
